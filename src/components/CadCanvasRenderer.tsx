@@ -319,6 +319,129 @@ export const CadCanvasRenderer = forwardRef<CadCanvasHandle, CadCanvasRendererPr
     }
   };
 
+  // ---- รองรับหน้าจอสัมผัส (iPad/มือถือ): ลากนิ้ว = เลื่อน, บีบ 2 นิ้ว = ซูม, แตะ = เลือก/วัดระยะ ----
+  const isMeasureModeRef = useRef(isMeasureMode);
+  isMeasureModeRef.current = isMeasureMode;
+  const measureStartedRef = useRef(false);
+  measureStartedRef.current = !!measurePoint1;
+  const viewRef = useRef({ zoom, pan });
+  viewRef.current = { zoom, pan };
+
+  const handleTap = (screenX: number, screenY: number) => {
+    if (isMeasureMode) {
+      const cadPt = screenToCad(screenX, screenY);
+      if (!measurePoint1) {
+        setMeasurePoint1(cadPt);
+        setMeasureCurrentPoint(cadPt);
+      } else {
+        const dist = Math.hypot(cadPt.x - measurePoint1.x, cadPt.y - measurePoint1.y);
+        onFinishMeasurement?.(dist, measurePoint1, cadPt);
+        setMeasurePoint1(null);
+        setMeasureCurrentPoint(null);
+      }
+    } else {
+      handleEntityClick(screenX, screenY);
+    }
+  };
+  const tapRef = useRef(handleTap);
+  tapRef.current = handleTap;
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    type G =
+      | { mode: 'none' }
+      | { mode: 'pan'; sx: number; sy: number; pan0: { x: number; y: number }; moved: boolean; t0: number }
+      | { mode: 'pinch'; d0: number; z0: number; cadMid: Point2D };
+    let g: G = { mode: 'none' };
+    let raf = 0;
+    let pending: { zoom: number; pan: { x: number; y: number } } | null = null;
+
+    const local = (t: Touch) => {
+      const r = canvas.getBoundingClientRect();
+      return { x: t.clientX - r.left, y: t.clientY - r.top };
+    };
+    const flush = () => {
+      raf = 0;
+      if (!pending) return;
+      setZoom(pending.zoom);
+      setPan(pending.pan);
+      panRef.current = pending.pan;
+      pending = null;
+    };
+    const schedule = (zoomV: number, panV: { x: number; y: number }) => {
+      viewRef.current = { zoom: zoomV, pan: panV };
+      pending = { zoom: zoomV, pan: panV };
+      if (!raf) raf = requestAnimationFrame(flush);
+    };
+
+    const onStart = (e: TouchEvent) => {
+      e.preventDefault();
+      const { zoom: z, pan: p } = viewRef.current;
+      if (e.touches.length >= 2) {
+        const a = local(e.touches[0]);
+        const b = local(e.touches[1]);
+        const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        g = {
+          mode: 'pinch',
+          d0: Math.max(Math.hypot(a.x - b.x, a.y - b.y), 1),
+          z0: z,
+          cadMid: { x: (mid.x - p.x) / z, y: (p.y - mid.y) / z },
+        };
+      } else if (e.touches.length === 1) {
+        const a = local(e.touches[0]);
+        g = { mode: 'pan', sx: a.x, sy: a.y, pan0: { ...p }, moved: false, t0: performance.now() };
+      }
+    };
+    const onMove = (e: TouchEvent) => {
+      e.preventDefault();
+      if (g.mode === 'pinch' && e.touches.length >= 2) {
+        const a = local(e.touches[0]);
+        const b = local(e.touches[1]);
+        const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        const nz = Math.max(Math.min(g.z0 * (d / g.d0), 10000000), 0.0000001);
+        schedule(nz, { x: mid.x - g.cadMid.x * nz, y: mid.y + g.cadMid.y * nz });
+      } else if (g.mode === 'pan' && e.touches.length === 1) {
+        const a = local(e.touches[0]);
+        const dx = a.x - g.sx;
+        const dy = a.y - g.sy;
+        if (!g.moved && Math.hypot(dx, dy) > 8) g.moved = true;
+        if (g.moved) schedule(viewRef.current.zoom, { x: g.pan0.x + dx, y: g.pan0.y + dy });
+        else if (isMeasureModeRef.current && measureStartedRef.current) {
+          const { zoom: z, pan: p } = viewRef.current;
+          setMeasureCurrentPoint({ x: (a.x - p.x) / z, y: (p.y - a.y) / z });
+        }
+      }
+    };
+    const onEnd = (e: TouchEvent) => {
+      e.preventDefault();
+      if (g.mode === 'pan' && !g.moved && e.touches.length === 0 && performance.now() - g.t0 < 600) {
+        tapRef.current(g.sx, g.sy);
+      }
+      if (e.touches.length === 1 && g.mode === 'pinch') {
+        // เหลือนิ้วเดียวหลังบีบ: เริ่มลากต่อจากตำแหน่งปัจจุบัน
+        const a = local(e.touches[0]);
+        g = { mode: 'pan', sx: a.x, sy: a.y, pan0: { ...viewRef.current.pan }, moved: true, t0: 0 };
+      } else if (e.touches.length === 0) {
+        g = { mode: 'none' };
+      }
+    };
+
+    canvas.addEventListener('touchstart', onStart, { passive: false });
+    canvas.addEventListener('touchmove', onMove, { passive: false });
+    canvas.addEventListener('touchend', onEnd, { passive: false });
+    canvas.addEventListener('touchcancel', onEnd, { passive: false });
+    return () => {
+      canvas.removeEventListener('touchstart', onStart);
+      canvas.removeEventListener('touchmove', onMove);
+      canvas.removeEventListener('touchend', onEnd);
+      canvas.removeEventListener('touchcancel', onEnd);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, []);
+
   // Click detection: find nearest entity within 15px radius
   const handleEntityClick = (screenX: number, screenY: number) => {
     let nearest: CadEntity | null = null;
@@ -949,6 +1072,7 @@ export const CadCanvasRenderer = forwardRef<CadCanvasHandle, CadCanvasRendererPr
       <canvas
         ref={canvasRef}
         className="w-full h-full block"
+        style={{ touchAction: 'none' }}
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}

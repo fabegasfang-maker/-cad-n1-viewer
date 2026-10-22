@@ -5,6 +5,16 @@
 const API = 'https://www.googleapis.com/drive/v3/files';
 export const DRIVE_API_KEY: string = (import.meta.env.VITE_GOOGLE_API_KEY as string) || '';
 
+/** มือถือ/แท็บเล็ต: จอเล็กหรือหน้าจอสัมผัสหลัก */
+export const IS_MOBILE: boolean =
+  typeof window !== 'undefined' &&
+  (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
+    (window.matchMedia?.('(pointer:coarse)').matches && Math.min(screen.width, screen.height) < 820));
+
+/** ขนาดไฟล์สูงสุดที่ยอมให้มือถือโหลด (ไฟล์ใหญ่กว่านี้มักทำให้เบราว์เซอร์ค้าง/รีโหลดเอง) */
+const MOBILE_MAX_BYTES = 40 * 1024 * 1024;
+const MOBILE_NAME = /mobile|mob\b|phone|เล็ก|มือถือ/i;
+
 async function apiJson(url: string) {
   const res = await fetch(url);
   if (!res.ok) {
@@ -38,9 +48,18 @@ export async function fetchPublicDriveCad(
     const list = await apiJson(
       `${API}?q=${q}&fields=files(id,name,mimeType,size,modifiedTime)&orderBy=modifiedTime desc&pageSize=100&supportsAllDrives=true&includeItemsFromAllDrives=true&${key}`
     );
-    const cad = (list.files || []).find((f: any) => /\.(dxf|dwg)$/i.test(f.name));
-    if (!cad) throw new Error('ไม่พบไฟล์ .dxf / .dwg ในโฟลเดอร์นี้');
-    meta = cad;
+    const cads: any[] = (list.files || []).filter((f: any) => /\.(dxf|dwg)$/i.test(f.name));
+    if (!cads.length) throw new Error('ไม่พบไฟล์ .dxf / .dwg ในโฟลเดอร์นี้');
+    // มือถือ: เลือกไฟล์ที่ชื่อมีคำว่า mobile ก่อน, คอม: เลือกไฟล์ที่ไม่ใช่ mobile ก่อน (ไฟล์ล่าสุดนำหน้า)
+    const preferred = cads.filter((f) => MOBILE_NAME.test(f.name) === IS_MOBILE);
+    meta = preferred[0] || (IS_MOBILE ? cads.slice().sort((a, b) => Number(a.size) - Number(b.size))[0] : cads[0]);
+  }
+
+  if (IS_MOBILE && meta.size && Number(meta.size) > MOBILE_MAX_BYTES) {
+    throw new Error(
+      `ไฟล์ "${meta.name}" ใหญ่ ${(Number(meta.size) / 1048576).toFixed(0)} MB เกินกว่ามือถือจะเปิดไหว (เสี่ยงค้าง) ` +
+        'กรุณาเปิดจากคอมพิวเตอร์ หรือให้ผู้ดูแลเพิ่มไฟล์ฉบับย่อสำหรับมือถือ (ตั้งชื่อลงท้ายด้วย _mobile.dxf) ในโฟลเดอร์ Drive'
+    );
   }
 
   const mb = meta.size ? ` (${(Number(meta.size) / 1048576).toFixed(0)} MB)` : '';
