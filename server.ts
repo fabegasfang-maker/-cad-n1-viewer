@@ -226,9 +226,9 @@ async function startServer() {
 
     if (contentType.includes('text/html')) {
       const html = await res1.text();
-      const uuidMatch = html.match(/name=\"uuid\"\s+value=\"([^\"]+)\"/);
-      const confirmMatch = html.match(/name=\"confirm\"\s+value=\"([^\"]+)\"/);
-      const nameMatch = html.match(/<a[^>]*href=\"\\/open\?id=[^\"]*\"[^>]*>([^<]+)<\/a>/);
+      const uuidMatch = html.match(/name="uuid"\s+value="([^"]+)"/);
+      const confirmMatch = html.match(/name="confirm"\s+value="([^"]+)"/);
+      const nameMatch = html.match(/<a[^>]*href="\/open\?id=[^"]*"[^>]*>([^<]+)<\/a>/);
 
       if (nameMatch) {
         actualFilename = nameMatch[1].trim();

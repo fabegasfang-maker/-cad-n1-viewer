@@ -5,7 +5,6 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
-    // './' ทำให้ใช้ได้ทุก path เช่น https://user.github.io/repo/
     base: './',
     plugins: [react(), tailwindcss()],
     resolve: {
