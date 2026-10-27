@@ -19,16 +19,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: oven-sh/setup-bun@v2
         with:
-          node-version: 22
-          cache: npm
+          bun-version: latest
       - name: Install dependencies
-        run: npm install --legacy-peer-deps
+        run: bun install
       - name: Restore Phase A (App + Canvas mobile guards)
         run: node scripts/restore-phase-a.mjs
       - name: Build
-        run: npm run build
+        run: bun run build
         env:
           VITE_STATIC_HOSTING: 'true'
           VITE_GOOGLE_API_KEY: ${{ vars.VITE_GOOGLE_API_KEY }}
