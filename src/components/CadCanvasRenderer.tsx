@@ -1,1 +1,2 @@
-see_next
+/** temp */
+export const CadCanvasRenderer = () => null;
