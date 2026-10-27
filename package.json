@@ -17,7 +17,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "compression": "^1.8.2",
     "dotenv": "^17.2.3",
-    "dwg2dxf-converter": "^1.0.4",
+    "dwgdxf": "^2.0.1",
     "dxf-parser": "^1.1.2",
     "express": "^4.21.2",
     "firebase": "^13.0.0",
