@@ -43,16 +43,22 @@ export async function fetchPublicDriveCad(
   let meta = await apiJson(`${API}/${id}?fields=id,name,mimeType,size&supportsAllDrives=true&${key}`);
 
   if (meta.mimeType === 'application/vnd.google-apps.folder') {
-    onStage?.('กำลังค้นหาไฟล์ CAD ในโฟลเดอร์...');
+    onStage?.('กำลังค้นหาไฟล์ CAD (.dwg / .dxf) ในโฟลเดอร์...');
     const q = encodeURIComponent(`'${id}' in parents and trashed=false`);
     const list = await apiJson(
       `${API}?q=${q}&fields=files(id,name,mimeType,size,modifiedTime)&orderBy=modifiedTime desc&pageSize=100&supportsAllDrives=true&includeItemsFromAllDrives=true&${key}`
     );
-    const cads: any[] = (list.files || []).filter((f: any) => /\.(dxf|dwg)$/i.test(f.name));
-    if (!cads.length) throw new Error('ไม่พบไฟล์ .dxf / .dwg ในโฟลเดอร์นี้');
+    const allFiles: any[] = list.files || [];
+    // ค้นหาไฟล์ .dwg ก่อน โดยเรียงตาม modifiedTime desc (ไฟล์ที่อัปเดตล่าสุด)
+    const dwgs: any[] = allFiles.filter((f: any) => /\.dwg$/i.test(f.name));
+    const dxfs: any[] = allFiles.filter((f: any) => /\.dxf$/i.test(f.name));
+
+    const candidates = dwgs.length > 0 ? dwgs : dxfs;
+    if (!candidates.length) throw new Error('ไม่พบไฟล์ .dwg หรือ .dxf ในโฟลเดอร์นี้');
+
     // มือถือ: เลือกไฟล์ที่ชื่อมีคำว่า mobile ก่อน, คอม: เลือกไฟล์ที่ไม่ใช่ mobile ก่อน (ไฟล์ล่าสุดนำหน้า)
-    const preferred = cads.filter((f) => MOBILE_NAME.test(f.name) === IS_MOBILE);
-    meta = preferred[0] || (IS_MOBILE ? cads.slice().sort((a, b) => Number(a.size) - Number(b.size))[0] : cads[0]);
+    const preferred = candidates.filter((f) => MOBILE_NAME.test(f.name) === IS_MOBILE);
+    meta = preferred[0] || (IS_MOBILE ? candidates.slice().sort((a, b) => Number(a.size) - Number(b.size))[0] : candidates[0]);
   }
 
   if (IS_MOBILE && meta.size && Number(meta.size) > MOBILE_MAX_BYTES) {

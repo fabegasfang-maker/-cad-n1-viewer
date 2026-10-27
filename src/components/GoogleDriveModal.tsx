@@ -123,7 +123,7 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
             </div>
             <div>
               <h3 className="text-base font-semibold text-neutral-100 flex items-center gap-2">
-                ดึงไฟล์ DXF จาก Google Drive
+                ดึงไฟล์แบบร่าง CAD (DWG / DXF) จาก Google Drive
               </h3>
               <p className="text-xs text-neutral-400">
                 โหลดไฟล์ CAD จากไดรฟ์ของคุณมาแสดงบนหน้าจอ N1 CAD Viewer
@@ -306,14 +306,26 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
                       className="group flex items-center justify-between p-2.5 rounded-lg bg-neutral-950/60 hover:bg-neutral-800/80 border border-neutral-800 hover:border-neutral-700 cursor-pointer transition-all"
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
-                        <FileCode2 className="w-4 h-4 text-blue-400 flex-shrink-0" />
+                        <FileCode2 className={`w-4 h-4 flex-shrink-0 ${f.name.toLowerCase().endsWith('.dwg') ? 'text-purple-400' : 'text-blue-400'}`} />
                         <div className="min-w-0">
-                          <div className="text-xs font-medium text-neutral-200 group-hover:text-blue-300 truncate">
-                            {f.name}
+                          <div className="text-xs font-medium text-neutral-200 group-hover:text-blue-300 truncate flex items-center gap-1.5">
+                            <span className="truncate">{f.name}</span>
+                            <span
+                              className={`px-1 py-0.2 rounded text-[9px] font-semibold flex-shrink-0 ${
+                                f.name.toLowerCase().endsWith('.dwg')
+                                  ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                                  : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                              }`}
+                            >
+                              {f.name.toLowerCase().endsWith('.dwg') ? 'DWG' : 'DXF'}
+                            </span>
                           </div>
                           <div className="text-[10px] text-neutral-500 flex items-center gap-2">
                             <span>ID: {f.id.slice(0, 12)}...</span>
                             {f.size && <span>• {formatFileSize(f.size)}</span>}
+                            {f.modifiedTime && (
+                              <span>• วันที่: {new Date(f.modifiedTime).toLocaleDateString('th-TH')}</span>
+                            )}
                           </div>
                         </div>
                       </div>

@@ -240,7 +240,7 @@ export default function App() {
       setDriveLoadingStage('กำลังเชื่อมต่อ Google Drive (ไม่ต้องล็อกอิน)...');
       setConversionError(null);
       try {
-        setDriveLoadingStage('กำลังดึงข้อมูลแผนผัง CAD จาก Google Drive...');
+        setDriveLoadingStage('กำลังค้นหาและดึงไฟล์ DWG ล่าสุดจาก Google Drive...');
 
         // 1. เรียกใช้งาน pre-parsed model endpoint ผ่าน POST (เลี่ยงปัญหา iframe cookie redirect)
         const resModel = await fetch('/api/drive-cad-model', {
@@ -251,19 +251,19 @@ export default function App() {
 
         const contentType = resModel.headers.get('content-type') || '';
         if (resModel.ok && contentType.includes('application/json')) {
-          setDriveLoadingStage('กำลังเรนเดอร์เอนทิตี CAD 262,900+ รายการ...');
+          setDriveLoadingStage('กำลังเรนเดอร์เอนทิตี CAD...');
           const data = await resModel.json();
           if (data.success && data.model) {
             setModel(data.model);
             setConversionNote(
-              `โหลดแบบร่างจาก Google Drive สำเร็จ: ${data.filename || knownFilename || 'แผนผังสวิทชิ่ง'} (${data.model.entities?.length?.toLocaleString() || '262,900+'} เอนทิตี)`
+              `โหลดแบบร่างจาก Google Drive สำเร็จ: ${data.filename || knownFilename || 'แผนผังสวิทชิ่ง'} (${data.model.entities?.length?.toLocaleString() || 'เอนทิตีสมบูรณ์'} รายการ)`
             );
             return;
           }
         }
 
-        // 2. หาก pre-parsed ไม่พร้อม ให้ดาวน์โหลด raw DXF ผ่าน POST /api/drive-file
-        setDriveLoadingStage('กำลังดาวน์โหลดไฟล์แบบร่าง CAD จาก Google Drive (141 MB)...');
+        // 2. หาก pre-parsed ไม่พร้อม ให้ดาวน์โหลด raw DWG/DXF ผ่าน POST /api/drive-file
+        setDriveLoadingStage('กำลังดาวน์โหลดไฟล์แบบร่าง CAD จาก Google Drive...');
         const response = await fetch('/api/drive-file', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -278,16 +278,16 @@ export default function App() {
         const rawHeaderName = response.headers.get('x-cad-filename');
         const filename = rawHeaderName
           ? decodeURIComponent(rawHeaderName)
-          : knownFilename || 'แผนผังสวิทชิ่งสั่งการ 21 ตุลาคม  2569_V2007.dxf';
+          : knownFilename || 'แผนผังสวิทชิ่งสั่งการ 27 ตุลาคม  2569_V2007.dwg';
         const isDwg = filename.toLowerCase().endsWith('.dwg');
 
         const buffer = await response.arrayBuffer();
 
-        setDriveLoadingStage('ดาวน์โหลดสำเร็จ (141 MB) กำลังแยกเอนทิตี CAD 260,000+ รายการ...');
+        setDriveLoadingStage(`ดาวน์โหลดสำเร็จ (${(buffer.byteLength / 1024 / 1024).toFixed(1)} MB) กำลังแยกเอนทิตี CAD...`);
         await new Promise((resolve) => setTimeout(resolve, 80));
 
         await processCadBuffer(buffer, filename, isDwg);
-        setConversionNote(`โหลดแบบร่างจาก Google Drive สำเร็จ: ${filename} (262,900+ เอนทิตี)`);
+        setConversionNote(`โหลดแบบร่างจาก Google Drive สำเร็จ: ${filename}`);
       } catch (err: any) {
         console.error('Public Drive load error:', err);
         setConversionError(err.message || 'ไม่สามารถโหลดไฟล์จาก Google Drive ได้');

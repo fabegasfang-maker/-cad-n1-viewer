@@ -104,11 +104,15 @@ async function startServer() {
     res.json({ status: 'ok', dwgConverter: 'dwgdxf (acadrust)' });
   });
 
-  // Known mapping for default shared Google Drive folder
+  // Known fallback mapping for default shared Google Drive folder
   const KNOWN_DRIVE_MAPPINGS: Record<string, { fileId: string; filename: string }> = {
     '1hetVemsG8FNfRZv9mJeDewi52j1yFoQY': {
-      fileId: '1f5NtD8HsJJIK-ascuEoDCX8hKVyFo61Y',
-      filename: 'แผนผังสวิทชิ่งสั่งการ 21 ตุลาคม  2569_V2007.dxf',
+      fileId: '1gAqglo0wVO7GozlPJhFOj0fZ4HNx1oPa',
+      filename: 'แผนผังสวิทชิ่งสั่งการ 27 ตุลาคม  2569_V2007.dwg',
+    },
+    '1gAqglo0wVO7GozlPJhFOj0fZ4HNx1oPa': {
+      fileId: '1gAqglo0wVO7GozlPJhFOj0fZ4HNx1oPa',
+      filename: 'แผนผังสวิทชิ่งสั่งการ 27 ตุลาคม  2569_V2007.dwg',
     },
     '1f5NtD8HsJJIK-ascuEoDCX8hKVyFo61Y': {
       fileId: '1f5NtD8HsJJIK-ascuEoDCX8hKVyFo61Y',
@@ -117,13 +121,11 @@ async function startServer() {
   };
 
   /**
-   * Resolves a Google Drive folder/file ID to a downloadable file ID and filename
+   * Resolves a Google Drive folder/file ID to a downloadable file ID and filename.
+   * Scans folder for .dwg files and picks the one with the latest modified date.
+   * If no .dwg is found, falls back to the latest .dxf.
    */
   async function resolvePublicDriveId(id: string): Promise<{ fileId: string; filename: string }> {
-    if (KNOWN_DRIVE_MAPPINGS[id]) {
-      return KNOWN_DRIVE_MAPPINGS[id];
-    }
-
     try {
       const folderUrl = `https://drive.google.com/drive/folders/${id}`;
       const res = await fetch(folderUrl, {
@@ -146,13 +148,43 @@ async function startServer() {
             const parsed = JSON.parse(unescaped);
             const items = parsed[0];
             if (Array.isArray(items)) {
-              const cadItem = items.find((it: any) => {
-                const name = String(it[2] || '').toLowerCase();
-                return name.endsWith('.dxf') || name.endsWith('.dwg');
-              });
-              if (cadItem) {
-                console.log(`[Drive Resolver] Found CAD file in folder: ${cadItem[2]} (${cadItem[0]})`);
-                return { fileId: cadItem[0], filename: cadItem[2] };
+              const cadItems = items
+                .filter((it: any) => {
+                  const name = String(it[2] || '').toLowerCase();
+                  return name.endsWith('.dwg') || name.endsWith('.dxf');
+                })
+                .map((it: any) => ({
+                  fileId: String(it[0]),
+                  filename: String(it[2]),
+                  isDwg: String(it[2] || '').toLowerCase().endsWith('.dwg'),
+                  // it[9] = modified timestamp (ms), it[10] = created timestamp (ms)
+                  modifiedTime: Number(it[9]) || Number(it[10]) || 0,
+                }));
+
+              // Prioritize DWG files, sorted by modifiedTime descending (latest updated first)
+              const dwgFiles = cadItems
+                .filter((f) => f.isDwg)
+                .sort((a, b) => b.modifiedTime - a.modifiedTime);
+
+              if (dwgFiles.length > 0) {
+                console.log(
+                  `[Drive Resolver] Found latest DWG file: ${dwgFiles[0].filename} (${dwgFiles[0].fileId}, modified: ${new Date(
+                    dwgFiles[0].modifiedTime
+                  ).toISOString()})`
+                );
+                return { fileId: dwgFiles[0].fileId, filename: dwgFiles[0].filename };
+              }
+
+              // Fallback to DXF files, sorted by modifiedTime descending
+              const dxfFiles = cadItems
+                .filter((f) => !f.isDwg)
+                .sort((a, b) => b.modifiedTime - a.modifiedTime);
+
+              if (dxfFiles.length > 0) {
+                console.log(
+                  `[Drive Resolver] Found fallback latest DXF file: ${dxfFiles[0].filename} (${dxfFiles[0].fileId})`
+                );
+                return { fileId: dxfFiles[0].fileId, filename: dxfFiles[0].filename };
               }
             }
           } catch (ivdErr) {
@@ -160,21 +192,28 @@ async function startServer() {
           }
         }
 
-        // 2. Fallback regex match
-        const matches = [...html.matchAll(/\[null,\s*\"([a-zA-Z0-9_-]{20,})\"\].*?\"([^\"]+?\.(?:dxf|dwg))\"/gi)];
-        if (matches.length > 0) {
-          const cadMatch =
-            matches.find(
-              (m) => m[2].toLowerCase().endsWith('.dxf') || m[2].toLowerCase().endsWith('.dwg')
-            ) || matches[0];
-          return { fileId: cadMatch[1], filename: cadMatch[2] };
+        // 2. Fallback regex match (prioritizing .dwg over .dxf)
+        const dwgMatches = [...html.matchAll(/\[null,\s*"([a-zA-Z0-9_-]{20,})"\].*?"([^"]+?\.dwg)"/gi)];
+        if (dwgMatches.length > 0) {
+          console.log(`[Drive Resolver] Regex found DWG: ${dwgMatches[0][2]} (${dwgMatches[0][1]})`);
+          return { fileId: dwgMatches[0][1], filename: dwgMatches[0][2] };
+        }
+
+        const dxfMatches = [...html.matchAll(/\[null,\s*"([a-zA-Z0-9_-]{20,})"\].*?"([^"]+?\.dxf)"/gi)];
+        if (dxfMatches.length > 0) {
+          console.log(`[Drive Resolver] Regex found DXF: ${dxfMatches[0][2]} (${dxfMatches[0][1]})`);
+          return { fileId: dxfMatches[0][1], filename: dxfMatches[0][2] };
         }
       }
     } catch (err) {
       console.warn('[Drive Resolver] Folder scan error:', err);
     }
 
-    return { fileId: id, filename: 'drawing.dxf' };
+    if (KNOWN_DRIVE_MAPPINGS[id]) {
+      return KNOWN_DRIVE_MAPPINGS[id];
+    }
+
+    return { fileId: id, filename: 'drawing.dwg' };
   }
 
   /**
@@ -288,14 +327,27 @@ async function startServer() {
 
     // If response envelope not found, check raw file & parse
     const { filePath, filename: finalName } = await getOrDownloadPublicDriveFile(fileId, filename);
-    console.log(`[Model Parser] Parsing DXF on server: ${finalName}...`);
     const fileBuf = fs.readFileSync(filePath);
+    const isDwg = finalName.toLowerCase().endsWith('.dwg');
+
+    let dxfBuffer: Uint8Array;
+    let dxfFilename = finalName;
+    if (isDwg) {
+      console.log(`[Model Parser] Converting DWG to DXF on server: ${finalName} (${(fileBuf.length / 1024 / 1024).toFixed(1)} MB)...`);
+      await ensureDwgReady();
+      dxfBuffer = await convertDwgToDxf(new Uint8Array(fileBuf));
+      dxfFilename = finalName.replace(/\.dwg$/i, '.dxf');
+      console.log(`[Model Parser] DWG converted to DXF: ${dxfFilename} (${(dxfBuffer.length / 1024 / 1024).toFixed(1)} MB)`);
+    } else {
+      console.log(`[Model Parser] Parsing DXF on server: ${finalName}...`);
+      dxfBuffer = new Uint8Array(fileBuf);
+    }
 
     const { parseDxfFromBuffer } = await import('./src/utils/dxfProcessor');
     const parsed = parseDxfFromBuffer(
-      fileBuf.buffer.slice(fileBuf.byteOffset, fileBuf.byteOffset + fileBuf.byteLength),
+      dxfBuffer.buffer.slice(dxfBuffer.byteOffset, dxfBuffer.byteOffset + dxfBuffer.byteLength) as ArrayBuffer,
       undefined,
-      finalName
+      dxfFilename
     );
 
     const envelope = {
