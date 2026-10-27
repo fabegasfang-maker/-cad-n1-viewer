@@ -301,6 +301,12 @@ export function parseDxfFromString(
 
     const blockBase = block.position || block.basePoint || { x: 0, y: 0 };
 
+    // ขนาดสเกลที่ใช้กับความยาว (รัศมี) ต้องเป็นค่าสัมบูรณ์ "ก่อน" เฉลี่ย
+    // เดิมใช้ abs((sx+sy)/2) ซึ่งเมื่อบล็อกถูกกลับด้าน (sx=-1, sy=1) จะได้ 0 ทำให้ ARC/CIRCLE หายไป
+    const scaleMag = (Math.abs(scaleX) + Math.abs(scaleY)) / 2;
+    // กลับด้านแกนเดียว (sx*sy<0) ทำให้ทิศการหมุนของส่วนโค้งกลับ ต้องสลับมุมเริ่ม/จบ และกลับเครื่องหมาย bulge
+    const mirrored = scaleX * scaleY < 0;
+
     function transformPt(pt?: { x?: number; y?: number }): Point2D {
       const lx = (pt?.x ?? 0) - (blockBase.x ?? 0);
       const ly = (pt?.y ?? 0) - (blockBase.y ?? 0);
@@ -354,7 +360,7 @@ export function parseDxfFromString(
             // Handle bulges inside blocks
             if (rawVerts[vi].bulge && vi < rawVerts.length - 1) {
               const nextP = transformPt(rawVerts[vi + 1]);
-              const arcPts = interpolateBulge(curP, nextP, rawVerts[vi].bulge);
+              const arcPts = interpolateBulge(curP, nextP, mirrored ? -rawVerts[vi].bulge : rawVerts[vi].bulge);
               for (const ap of arcPts) {
                 transformedVerts.push(ap);
                 updateBounds(ap.x, ap.y);
@@ -376,7 +382,7 @@ export function parseDxfFromString(
         }
       } else if (bType === 'CIRCLE') {
         const c = transformPt(bEnt.center);
-        const r = (bEnt.radius ?? 1) * Math.abs((scaleX + scaleY) / 2);
+        const r = (bEnt.radius ?? 1) * scaleMag;
         updateBounds(c.x - r, c.y - r);
         updateBounds(c.x + r, c.y + r);
         entities.push({
@@ -391,9 +397,12 @@ export function parseDxfFromString(
         });
       } else if (bType === 'ARC') {
         const c = transformPt(bEnt.center);
-        const r = (bEnt.radius ?? 1) * Math.abs((scaleX + scaleY) / 2);
-        let sa = (bEnt.startAngle ?? 0) + rotRad;
-        let ea = (bEnt.endAngle ?? Math.PI * 2) + rotRad;
+        const r = (bEnt.radius ?? 1) * scaleMag;
+        // แปลงมุมผ่านสเกล (รวมการกลับด้าน/หมุน 180°) แล้วค่อยบวกมุมหมุนของ INSERT
+        const mapAngle = (a: number) => Math.atan2(scaleY * Math.sin(a), scaleX * Math.cos(a)) + rotRad;
+        let sa = mapAngle(bEnt.startAngle ?? 0);
+        let ea = mapAngle(bEnt.endAngle ?? Math.PI * 2);
+        if (mirrored) [sa, ea] = [ea, sa]; // วาดทวนเข็มจาก sa ไป ea เสมอ
         updateBounds(c.x - r, c.y - r);
         updateBounds(c.x + r, c.y + r);
         entities.push({
