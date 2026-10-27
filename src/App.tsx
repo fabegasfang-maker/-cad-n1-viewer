@@ -85,6 +85,8 @@ export default function App() {
   const [spaceFilter, setSpaceFilter] = useState<CadSpaceFilter>('all');
   const canvasHandleRef = useRef<CadCanvasHandle | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // DXF ที่แปลงจาก DWG ขนาดใหญ่: เก็บเป็น ArrayBuffer (ไม่ decode เป็นสตริงซ้ำ) ไว้ใช้ตอนส่งออก
+  const convertedDxfBufferRef = useRef<ArrayBuffer | null>(null);
 
   // Auto-dismiss banners
   useEffect(() => {
@@ -133,14 +135,22 @@ export default function App() {
           const outName = fileName.replace(/\.dwg$/i, '.dxf');
 
           setConversionNote(
-            `แปลงจาก DWG สำเร็จ (${(bytes.length / 1024).toFixed(1)} KB, ใช้เวลา ${result.duration}ms)`
+            `แปลงจาก DWG สำเร็จ (${(bytes.length / 1024).toFixed(1)} KB, ใช้เวลา ${result.duration}ms)` +
+              (result.repaired > 0 ? ` · ซ่อมตัวขึ้นบรรทัดใหม่ในข้อความ ${result.repaired} จุด` : '')
           );
           setConversionError(null);
 
           const parsed = parseDxfFromBuffer(bytes.buffer, undefined, outName);
           setModel(parsed);
-          const decoder = new TextDecoder('utf-8');
-          setRawDxfString(decoder.decode(bytes));
+          // ไฟล์ใหญ่ไม่เก็บ DXF ดิบเป็นสตริงซ้ำใน state (กินแรมเท่าตัว โดยเฉพาะบนมือถือ)
+          if (bytes.byteLength < 15 * 1024 * 1024) {
+            const decoder = new TextDecoder('utf-8');
+            setRawDxfString(decoder.decode(bytes));
+            convertedDxfBufferRef.current = null;
+          } else {
+            setRawDxfString('');
+            convertedDxfBufferRef.current = bytes.buffer as ArrayBuffer;
+          }
         } catch (err: any) {
           console.error('DWG conversion error:', err);
           setConversionError(
@@ -156,6 +166,7 @@ export default function App() {
           setModel(parsed);
           setConversionError(null);
           setConversionNote(null);
+          convertedDxfBufferRef.current = null;
           // ป้องกันการ decode ข้อความขนาด 150MB เก็บใน state ซ้ำซ้อน ซึ่งทำให้เบราว์เซอร์กินแรมสูงและกระตุก
           if (buffer.byteLength < 15 * 1024 * 1024) {
             const textDecoder = new TextDecoder('windows-874');
@@ -380,8 +391,8 @@ export default function App() {
 
   // Export functions
   function exportDxfFile() {
-    if (!rawDxfString && !model) return;
-    const blob = new Blob([rawDxfString], { type: 'application/dxf' });
+    if (!rawDxfString && !convertedDxfBufferRef.current && !model) return;
+    const blob = new Blob([rawDxfString || convertedDxfBufferRef.current || ''], { type: 'application/dxf' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
