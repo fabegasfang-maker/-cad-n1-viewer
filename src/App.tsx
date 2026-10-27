@@ -46,7 +46,7 @@ import { GoogleDriveModal } from './components/GoogleDriveModal';
 import { initAuth, googleSignIn, logout } from './services/googleDriveAuth';
 import { downloadDriveFile } from './services/googleDriveApi';
 import { fetchPublicDriveCad, DRIVE_API_KEY } from './services/drivePublic';
-import { convertDwgInBrowser } from './utils/dwgClient';
+import { convertDwgInBrowser, detectDwgVersion } from './utils/dwgClient';
 
 // true เมื่อ build สำหรับ GitHub Pages (ไม่มีเซิร์ฟเวอร์ /api)
 const STATIC_HOSTING = import.meta.env.VITE_STATIC_HOSTING === 'true';
@@ -93,7 +93,7 @@ export default function App() {
     if (!conversionError) return;
     const timer = setTimeout(() => {
       setConversionError(null);
-    }, 8000);
+    }, 15000);
     return () => clearTimeout(timer);
   }, [conversionError]);
 
@@ -141,6 +141,18 @@ export default function App() {
           setConversionError(null);
 
           const parsed = parseDxfFromBuffer(bytes.buffer, undefined, outName);
+          if (parsed.entities.length === 0) {
+            // แปลงจบแต่ไม่ได้เอนทิตีเลย: บอกสาเหตุที่น่าจะเป็นแทนการแสดงหน้าว่างพร้อมข้อความ "สำเร็จ"
+            const ver = detectDwgVersion(buffer);
+            setConversionNote(null);
+            setConversionError(
+              ver.isNew
+                ? `ไฟล์นี้เป็น DWG รุ่น ${ver.label} (${ver.code}) ตัวแปลงในเว็บอ่านข้อมูลรูปแบบนี้ไม่ได้ ` +
+                    `ให้เปิดใน AutoCAD แล้ว Save As เป็น "AutoCAD 2007 DWG" (หรือ 2004/2000) แล้วเปิดใหม่ หรือบันทึกเป็น DXF`
+                : 'แปลงไฟล์ DWG แล้วแต่ไม่พบวัตถุในแบบ แนะนำให้บันทึกเป็น DWG 2007 หรือ DXF จาก AutoCAD'
+            );
+            return;
+          }
           setModel(parsed);
           // ไฟล์ใหญ่ไม่เก็บ DXF ดิบเป็นสตริงซ้ำใน state (กินแรมเท่าตัว โดยเฉพาะบนมือถือ)
           if (bytes.byteLength < 15 * 1024 * 1024) {
