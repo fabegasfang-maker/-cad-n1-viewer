@@ -22,11 +22,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install
-      # Restore App.tsx + CadCanvasRenderer.tsx (Phase A mobile OOM guards)
-      # in case the repo still has placeholder files from a large-file upload failure
-      - run: node scripts/restore-phase-a.mjs
-      - run: npm run build
+          cache: npm
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+      - name: Restore Phase A (App + Canvas mobile guards)
+        run: node scripts/restore-phase-a.mjs
+      - name: Build
+        run: npm run build
         env:
           VITE_STATIC_HOSTING: 'true'
           VITE_GOOGLE_API_KEY: ${{ vars.VITE_GOOGLE_API_KEY }}
