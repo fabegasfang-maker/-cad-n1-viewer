@@ -1,5 +1,5 @@
 /**
- * Restore App.tsx + CadCanvasRenderer.tsx (mobile + Drive folder + UI cleanup + download-to-device)
+ * Restore App.tsx + CadCanvasRenderer.tsx (mobile + Drive + UI + download + localStorage migrate)
  * Run: node scripts/restore-phase-a.mjs
  */
 import fs from 'fs';
@@ -169,6 +169,29 @@ async function main() {
   if (app.includes(OLD_DRIVE)) {
     app = app.split(OLD_DRIVE).join(NEW_DRIVE);
     console.log('Updated DEFAULT_DRIVE_FILE_ID →', NEW_DRIVE);
+  }
+
+  const oldInit = `  const [driveFileId, setDriveFileId] = useState<string>(() => {
+    return localStorage.getItem('cad_default_drive_file_id') || DEFAULT_DRIVE_FILE_ID;
+  });`;
+  const newInit = `  const [driveFileId, setDriveFileId] = useState<string>(() => {
+    try {
+      const stored = localStorage.getItem('cad_default_drive_file_id');
+      const legacyIds = new Set([
+        '1hetVemsG8FNfRZv9mJeDewi52j1yFoQY',
+      ]);
+      if (!stored || legacyIds.has(stored)) {
+        localStorage.setItem('cad_default_drive_file_id', DEFAULT_DRIVE_FILE_ID);
+        return DEFAULT_DRIVE_FILE_ID;
+      }
+      return stored;
+    } catch {
+      return DEFAULT_DRIVE_FILE_ID;
+    }
+  });`;
+  if (app.includes(oldInit)) {
+    app = app.replace(oldInit, newInit);
+    console.log('Patched driveFileId localStorage migration');
   }
 
   if (app.includes('เปิดทุกเลเยอร์')) {
