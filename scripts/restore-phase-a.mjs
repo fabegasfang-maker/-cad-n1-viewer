@@ -165,6 +165,20 @@ async function main() {
   must(app, autoOld, 'auto');
   app = app.replace(autoOld, autoNew);
 
+  // Folder: 03 แผนผังสั่งการ 2569 (เดือนย่อย → ไฟล์ล่าสุด)
+  const NEW_DRIVE = '1mP47qarQZxPF-ln5Dy7VZrJlcq0uPJ4D';
+  const OLD_DRIVE = '1hetVemsG8FNfRZv9mJeDewi52j1yFoQY';
+  if (app.includes(OLD_DRIVE)) {
+    app = app.split(OLD_DRIVE).join(NEW_DRIVE);
+    console.log('Updated DEFAULT_DRIVE_FILE_ID →', NEW_DRIVE);
+  } else if (!app.includes(NEW_DRIVE)) {
+    app = app.replace(
+      /const DEFAULT_DRIVE_FILE_ID = '[^']+';/,
+      "const DEFAULT_DRIVE_FILE_ID = '" + NEW_DRIVE + "';"
+    );
+    console.log('Replaced DEFAULT_DRIVE_FILE_ID via regex →', NEW_DRIVE);
+  }
+
   fs.mkdirSync(path.join(root, 'src/components'), { recursive: true });
   fs.writeFileSync(path.join(root, 'src/App.tsx'), app);
   console.log('Restored src/App.tsx', app.length, 'bytes');
