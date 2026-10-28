@@ -1,5 +1,5 @@
 /**
- * Restore App.tsx + CadCanvasRenderer.tsx (mobile + Drive folder + UI cleanup)
+ * Restore App.tsx + CadCanvasRenderer.tsx (mobile + Drive folder + UI cleanup + download-to-device)
  * Run: node scripts/restore-phase-a.mjs
  */
 import fs from 'fs';
@@ -57,7 +57,6 @@ async function main() {
             );
           }
           setModel(modelToUse);
-          // มือถือ/ไฟล์ใหญ่: ไม่เก็บ DXF ดิบใน memory (กัน iOS Safari OOM)
           const keepLimit = getRawDxfKeepLimitBytes();
           if (!isMobileDevice() && bytes.byteLength < keepLimit) {
             const decoder = new TextDecoder('utf-8');
@@ -101,7 +100,6 @@ async function main() {
             setConversionNote(null);
           }
           convertedDxfBufferRef.current = null;
-          // มือถือไม่ decode DXF ทั้งไฟล์เป็น string
           if (!isMobileDevice() && buffer.byteLength < getRawDxfKeepLimitBytes()) {
             const textDecoder = new TextDecoder('windows-874');
             try {
@@ -154,7 +152,7 @@ async function main() {
     if (isMobileDevice()) {
       if (!autoLoadAttempted) {
         setAutoLoadAttempted(true);
-        setConversionNote('โหมดมือถือ/iPad: ไม่โหลดไฟล์ใหญ่ให้อัตโนมัติ กดปุ่ม Drive หรือเลือกไฟล์เอง');
+        setConversionNote('โหมดมือถือ/iPad: กด «ดาวน์โหลดไฟล์งาน» เพื่อบันทึก DWG ลงเครื่อง แล้วค่อยเปิดไฟล์ — หรือเลือกไฟล์จากเครื่อง');
       }
       return;
     }
@@ -168,37 +166,29 @@ async function main() {
   must(app, autoOld, 'auto');
   app = app.replace(autoOld, autoNew);
 
-  // Drive folder ID
   if (app.includes(OLD_DRIVE)) {
     app = app.split(OLD_DRIVE).join(NEW_DRIVE);
     console.log('Updated DEFAULT_DRIVE_FILE_ID →', NEW_DRIVE);
   }
 
-  // --- UI cleanup ---
   if (app.includes('เปิดทุกเลเยอร์')) {
     app = app.replace(
       /\s*\{\/\* Quick Show All Layers \*\/\}[\s\S]*?<span className="hidden xl:inline">เปิดทุกเลเยอร์<\/span>\s*<\/button>\n/,
       '\n'
     );
-    console.log('Removed: เปิดทุกเลเยอร์');
   }
-
   if (app.includes('แก้เส้นขาด')) {
     app = app.replace(
       /\s*\{\/\* Quick Force Solid Lines to fix missing lines \*\/\}[\s\S]*?\{forceSolidLines \? 'เส้นทึบ \(เปิด\)' : 'แก้เส้นขาด'\}[\s\S]*?<\/button>\n/,
       '\n'
     );
-    console.log('Removed: แก้เส้นขาด');
   }
-
   if (app.includes('Thai Font Selector')) {
     app = app.replace(
       /\s*\{\/\* Thai Font Selector \*\/\}[\s\S]*?(?=\s*\{\/\* Theme Selector \*\/\})/,
       '\n'
     );
-    console.log('Removed: ฟอนต์ selector');
   }
-
   if (app.includes('text-[11px] opacity-60 truncate max-w-[280px]')) {
     app = app.replace(
       `              <p className="text-[11px] opacity-60 truncate max-w-[280px]">
@@ -208,9 +198,7 @@ async function main() {
                 {model ? model.filename : 'พร้อมเปิดไฟล์แบบร่าง'}
               </p>`
     );
-    console.log('Enlarged filename display');
   }
-
   if (app.includes('mouseCadCoord.x.toFixed')) {
     app = app.replace(
       `          {/* พิกัด XY & Zoom (อยู่หลังปุ่มขนาดอักษรและความหนาเส้น) */}
@@ -227,14 +215,106 @@ async function main() {
               Zoom: <strong className="text-white font-bold">{Math.round(zoomLevel * 100)}%</strong>
             </span>
           </div>`,
-      `          {/* Zoom (เอาพิกัด XY ออก) */}
-          <div className="flex items-center gap-2 bg-slate-900/60 border border-slate-800 px-2.5 py-1 rounded-lg font-mono text-[11px] text-slate-300 whitespace-nowrap shrink-0">
+      `          <div className="flex items-center gap-2 bg-slate-900/60 border border-slate-800 px-2.5 py-1 rounded-lg font-mono text-[11px] text-slate-300 whitespace-nowrap shrink-0">
             <span>
               Zoom: <strong className="text-white font-bold">{Math.round(zoomLevel * 100)}%</strong>
             </span>
           </div>`
     );
-    console.log('Removed XY coords');
+  }
+
+  if (!app.includes('downloadPublicDriveCadToDevice')) {
+    app = app.replace(
+      "import { fetchPublicDriveCad, DRIVE_API_KEY } from './services/drivePublic';",
+      "import { fetchPublicDriveCad, downloadPublicDriveCadToDevice, DRIVE_API_KEY } from './services/drivePublic';"
+    );
+  }
+  if (!app.includes('isDownloadingToDevice')) {
+    app = app.replace(
+      '  const [autoLoadAttempted, setAutoLoadAttempted] = useState<boolean>(false);',
+      `  const [autoLoadAttempted, setAutoLoadAttempted] = useState<boolean>(false);
+  const [isMobileUi, setIsMobileUi] = useState(false);
+  const [isDownloadingToDevice, setIsDownloadingToDevice] = useState(false);
+
+  useEffect(() => {
+    setIsMobileUi(isMobileDevice());
+  }, []);`
+    );
+  }
+  if (!app.includes('downloadLatestCadToDevice')) {
+    const insertAfter = `  // Auto load default Google Drive file on app open (desktop only — มือถือ/iPad ข้ามเพื่อกัน OOM)`;
+    const handler = `  const downloadLatestCadToDevice = useCallback(async () => {
+    if (!driveFileId) {
+      setConversionError('ยังไม่ได้ตั้งค่าโฟลเดอร์ Google Drive');
+      return;
+    }
+    setIsDownloadingToDevice(true);
+    setConversionError(null);
+    try {
+      const { filename, sizeBytes } = await downloadPublicDriveCadToDevice(
+        driveFileId,
+        setDriveLoadingStage
+      );
+      setConversionNote(
+        \`บันทึก \${filename} (\${(sizeBytes / 1048576).toFixed(1)} MB) ลงเครื่องแล้ว — เปิดด้วยแอป CAD หรือกด «เปิดไฟล์» เพื่อดูในเว็บ (ถ้าขนาดไม่เกินขีดจำกัด)\`
+      );
+    } catch (err) {
+      setConversionError((err && err.message) || 'ดาวน์โหลดไฟล์ลงเครื่องไม่สำเร็จ');
+    } finally {
+      setIsDownloadingToDevice(false);
+      setDriveLoadingStage('');
+    }
+  }, [driveFileId]);
+
+  // Auto load default Google Drive file on app open (desktop only — มือถือ/iPad ข้ามเพื่อกัน OOM)`;
+    if (app.includes(insertAfter)) app = app.replace(insertAfter, handler);
+  }
+
+  if (!app.includes('mobile-download-banner')) {
+    const top = app.indexOf('      {/* Top Application Bar */}');
+    if (top >= 0) {
+      const hclose = app.indexOf('      </header>', top);
+      if (hclose >= 0) {
+        const banner = `      </header>
+
+      {isMobileUi && !model && (
+        <div className="mobile-download-banner shrink-0 z-10 px-3 py-2.5 bg-emerald-950/90 border-b border-emerald-700/50 text-emerald-50 text-sm">
+          <div className="font-semibold mb-1">มือถือ / iPad</div>
+          <p className="text-xs opacity-90 mb-2 leading-relaxed">
+            แนะนำให้ดาวน์โหลดไฟล์งานลงเครื่องก่อน แล้วเปิดด้วยแอป CAD หรือกด «เปิดไฟล์» เพื่อเลือกไฟล์จากเครื่อง
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => downloadLatestCadToDevice()}
+              disabled={isDownloadingToDevice}
+              className="flex-1 min-w-[140px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-white text-sm font-semibold"
+            >
+              {isDownloadingToDevice ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+              {isDownloadingToDevice ? 'กำลังดาวน์โหลด…' : 'ดาวน์โหลดไฟล์งาน'}
+            </button>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="flex-1 min-w-[120px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-sm font-medium"
+            >
+              <FolderOpen className="w-4 h-4" />
+              เปิดไฟล์จากเครื่อง
+            </button>
+          </div>
+          {driveLoadingStage && (
+            <p className="mt-2 text-[11px] opacity-80 font-mono">{driveLoadingStage}</p>
+          )}
+        </div>
+      )}
+`;
+        app = app.slice(0, hclose) + banner + app.slice(hclose + '      </header>'.length);
+      }
+    }
   }
 
   fs.mkdirSync(path.join(root, 'src/components'), { recursive: true });
@@ -290,7 +370,6 @@ async function main() {
       if (layer && !layer.visible) continue;`
     );
   }
-
   if (!canvas.includes('touchAction')) {
     canvas = canvas.replace(
       'className="w-full h-full block"',
