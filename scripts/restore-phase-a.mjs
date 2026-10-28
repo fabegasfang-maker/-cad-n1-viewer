@@ -1,6 +1,6 @@
 /**
- * Restore App.tsx + CadCanvasRenderer.tsx with Phase A+ mobile hard limits
- * Run from repo root: node scripts/restore-phase-a.mjs
+ * Restore App.tsx + CadCanvasRenderer.tsx (mobile + Drive folder + UI cleanup)
+ * Run: node scripts/restore-phase-a.mjs
  */
 import fs from 'fs';
 import path from 'path';
@@ -13,6 +13,9 @@ const APP_URL =
   'https://raw.githubusercontent.com/fabegasfang-maker/-cad-n1-viewer/6a28043f84a2a2f340266388164b29873f6e116c/src/App.tsx';
 const CANVAS_URL =
   'https://raw.githubusercontent.com/fabegasfang-maker/-cad-n1-viewer/6a28043f84a2a2f340266388164b29873f6e116c/src/components/CadCanvasRenderer.tsx';
+
+const NEW_DRIVE = '1mP47qarQZxPF-ln5Dy7VZrJlcq0uPJ4D';
+const OLD_DRIVE = '1hetVemsG8FNfRZv9mJeDewi52j1yFoQY';
 
 function must(hay, needle, label) {
   if (!hay.includes(needle)) throw new Error(`missing block: ${label}`);
@@ -165,18 +168,73 @@ async function main() {
   must(app, autoOld, 'auto');
   app = app.replace(autoOld, autoNew);
 
-  // Folder: 03 แผนผังสั่งการ 2569 (เดือนย่อย → ไฟล์ล่าสุด)
-  const NEW_DRIVE = '1mP47qarQZxPF-ln5Dy7VZrJlcq0uPJ4D';
-  const OLD_DRIVE = '1hetVemsG8FNfRZv9mJeDewi52j1yFoQY';
+  // Drive folder ID
   if (app.includes(OLD_DRIVE)) {
     app = app.split(OLD_DRIVE).join(NEW_DRIVE);
     console.log('Updated DEFAULT_DRIVE_FILE_ID →', NEW_DRIVE);
-  } else if (!app.includes(NEW_DRIVE)) {
+  }
+
+  // --- UI cleanup ---
+  if (app.includes('เปิดทุกเลเยอร์')) {
     app = app.replace(
-      /const DEFAULT_DRIVE_FILE_ID = '[^']+';/,
-      "const DEFAULT_DRIVE_FILE_ID = '" + NEW_DRIVE + "';"
+      /\s*\{\/\* Quick Show All Layers \*\/\}[\s\S]*?<span className="hidden xl:inline">เปิดทุกเลเยอร์<\/span>\s*<\/button>\n/,
+      '\n'
     );
-    console.log('Replaced DEFAULT_DRIVE_FILE_ID via regex →', NEW_DRIVE);
+    console.log('Removed: เปิดทุกเลเยอร์');
+  }
+
+  if (app.includes('แก้เส้นขาด')) {
+    app = app.replace(
+      /\s*\{\/\* Quick Force Solid Lines to fix missing lines \*\/\}[\s\S]*?\{forceSolidLines \? 'เส้นทึบ \(เปิด\)' : 'แก้เส้นขาด'\}[\s\S]*?<\/button>\n/,
+      '\n'
+    );
+    console.log('Removed: แก้เส้นขาด');
+  }
+
+  if (app.includes('Thai Font Selector')) {
+    app = app.replace(
+      /\s*\{\/\* Thai Font Selector \*\/\}[\s\S]*?(?=\s*\{\/\* Theme Selector \*\/\})/,
+      '\n'
+    );
+    console.log('Removed: ฟอนต์ selector');
+  }
+
+  if (app.includes('text-[11px] opacity-60 truncate max-w-[280px]')) {
+    app = app.replace(
+      `              <p className="text-[11px] opacity-60 truncate max-w-[280px]">
+                {model ? \`\${model.filename} (\${model.entities.length} วัตถุ)\` : 'พร้อมเปิดไฟล์แบบร่าง'}
+              </p>`,
+      `              <p className="font-bold text-base tracking-tight truncate max-w-[min(52vw,560px)] opacity-95" title={model ? model.filename : undefined}>
+                {model ? model.filename : 'พร้อมเปิดไฟล์แบบร่าง'}
+              </p>`
+    );
+    console.log('Enlarged filename display');
+  }
+
+  if (app.includes('mouseCadCoord.x.toFixed')) {
+    app = app.replace(
+      `          {/* พิกัด XY & Zoom (อยู่หลังปุ่มขนาดอักษรและความหนาเส้น) */}
+          <div className="flex items-center gap-2 bg-slate-900/60 border border-slate-800 px-2.5 py-1 rounded-lg font-mono text-[11px] text-slate-300 whitespace-nowrap shrink-0">
+            <span>
+              X: <strong className="text-white font-bold">{mouseCadCoord.x.toFixed(3)}</strong>
+            </span>
+            <span className="text-slate-600">|</span>
+            <span>
+              Y: <strong className="text-white font-bold">{mouseCadCoord.y.toFixed(3)}</strong>
+            </span>
+            <span className="text-slate-600">|</span>
+            <span>
+              Zoom: <strong className="text-white font-bold">{Math.round(zoomLevel * 100)}%</strong>
+            </span>
+          </div>`,
+      `          {/* Zoom (เอาพิกัด XY ออก) */}
+          <div className="flex items-center gap-2 bg-slate-900/60 border border-slate-800 px-2.5 py-1 rounded-lg font-mono text-[11px] text-slate-300 whitespace-nowrap shrink-0">
+            <span>
+              Zoom: <strong className="text-white font-bold">{Math.round(zoomLevel * 100)}%</strong>
+            </span>
+          </div>`
+    );
+    console.log('Removed XY coords');
   }
 
   fs.mkdirSync(path.join(root, 'src/components'), { recursive: true });
