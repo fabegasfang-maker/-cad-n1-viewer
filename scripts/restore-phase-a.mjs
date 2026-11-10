@@ -1,5 +1,6 @@
 /**
- * Restore App.tsx + CadCanvasRenderer.tsx (mobile + Drive + UI + download + localStorage migrate + export DWG)
+ * Restore App.tsx + CadCanvasRenderer.tsx
+ * (mobile large local open + Drive + UI + download + export DWG)
  * Run: node scripts/restore-phase-a.mjs
  */
 import fs from 'fs';
@@ -28,12 +29,17 @@ async function main() {
   if (!app.includes("from './utils/device'")) {
     app = app.replace(
       "import { convertDwgInBrowser, detectDwgVersion } from './utils/dwgClient';",
-      "import { convertDwgInBrowser, detectDwgVersion } from './utils/dwgClient';\nimport { isMobileDevice, getRawDxfKeepLimitBytes, getMobileEntityCap, getMobileMaxUploadBytes } from './utils/device';"
+      "import { convertDwgInBrowser, detectDwgVersion } from './utils/dwgClient';\nimport { isMobileDevice, getRawDxfKeepLimitBytes, getMobileEntityCap, getMobileMaxUploadBytes, getMobileWarnUploadBytes } from './utils/device';"
     );
   } else if (!app.includes('getMobileEntityCap')) {
     app = app.replace(
       "import { isMobileDevice, getRawDxfKeepLimitBytes } from './utils/device';",
-      "import { isMobileDevice, getRawDxfKeepLimitBytes, getMobileEntityCap, getMobileMaxUploadBytes } from './utils/device';"
+      "import { isMobileDevice, getRawDxfKeepLimitBytes, getMobileEntityCap, getMobileMaxUploadBytes, getMobileWarnUploadBytes } from './utils/device';"
+    );
+  } else if (!app.includes('getMobileWarnUploadBytes')) {
+    app = app.replace(
+      'getMobileMaxUploadBytes } from',
+      'getMobileMaxUploadBytes, getMobileWarnUploadBytes } from'
     );
   }
 
@@ -47,13 +53,13 @@ async function main() {
             setRawDxfString('');
             convertedDxfBufferRef.current = bytes.buffer as ArrayBuffer;
           }`;
-  const keepNew = `          // มือถือ: ตัดเอนทิตีเกินเพดาน เพื่อกันค้างตอนเรนเดอร์
+  const keepNew = `          // มือถือ: ตัดเอนทิตีเกินเพดาน เพื่อกันค้างตอนเรนเดอร์ — ยังเปิดไฟล์ใหญ่ได้
           let modelToUse = parsed;
           if (isMobileDevice() && parsed.entities.length > getMobileEntityCap()) {
             const cap = getMobileEntityCap();
             modelToUse = { ...parsed, entities: parsed.entities.slice(0, cap) };
             setConversionNote(
-              \`โหมดมือถือ: แสดง \${cap.toLocaleString()} จาก \${parsed.entities.length.toLocaleString()} ออบเจ็กต์ (ไฟล์ใหญ่เกินไปสำหรับมือถือ)\`
+              \`โหมดมือถือ: แสดง \${cap.toLocaleString()} จาก \${parsed.entities.length.toLocaleString()} ออบเจ็กต์ (ไฟล์ใหญ่ — ตัดส่วนเกินเพื่อให้เปิดอ่านได้)\`
             );
           }
           setModel(modelToUse);
@@ -91,7 +97,7 @@ async function main() {
             const cap = getMobileEntityCap();
             modelToUse = { ...parsed, entities: parsed.entities.slice(0, cap) };
             setConversionNote(
-              \`โหมดมือถือ: แสดง \${cap.toLocaleString()} จาก \${parsed.entities.length.toLocaleString()} ออบเจ็กต์\`
+              \`โหมดมือถือ: แสดง \${cap.toLocaleString()} จาก \${parsed.entities.length.toLocaleString()} ออบเจ็กต์ (เปิดอ่านได้แม้ไฟล์ใหญ่)\`
             );
           }
           setModel(modelToUse);
@@ -113,6 +119,7 @@ async function main() {
   must(app, dxfOld, 'dxf');
   app = app.replace(dxfOld, dxfNew);
 
+  // มือถือ: อนุญาตเปิดไฟล์ใหญ่จากเครื่อง (หลังดาวน์โหลด) — เตือนแทนบล็อก ถ้ายังไม่เกินเพดานสูงสุด
   const uploadOld = `    if (!isDwg && !isDxf) {
       setConversionError('กรุณาเลือกไฟล์นามสกุล .DXF หรือ .DWG');
       return;
@@ -127,10 +134,15 @@ async function main() {
 
     if (isMobileDevice() && file.size > getMobileMaxUploadBytes()) {
       setConversionError(
-        \`ไฟล์ใหญ่ \${(file.size / 1048576).toFixed(1)} MB เกินกว่ามือถือ/iPad จะเปิดไหว \` +
-          \`(จำกัด \${(getMobileMaxUploadBytes() / 1048576).toFixed(0)} MB) กรุณาเปิดจากคอมพิวเตอร์ หรือใช้ไฟล์ฉบับย่อ\`
+        \`ไฟล์ใหญ่ \${(file.size / 1048576).toFixed(1)} MB เกินเพดานมือถือ \${(getMobileMaxUploadBytes() / 1048576).toFixed(0)} MB — แนะนำเปิดจากคอมพิวเตอร์ หรือใช้ไฟล์ฉบับย่อ\`
       );
       return;
+    }
+
+    if (isMobileDevice() && file.size > getMobileWarnUploadBytes()) {
+      setConversionNote(
+        \`ไฟล์ใหญ่ \${(file.size / 1048576).toFixed(1)} MB — กำลังพยายามเปิดบนมือถือ (อาจใช้เวลา/แรมมาก จะแสดงบางส่วนถ้าเอนทิตีเกินเพดาน)\`
+      );
     }
 
     const buffer = await file.arrayBuffer();
@@ -147,12 +159,14 @@ async function main() {
       });
     }
   }, [model, autoLoadAttempted, driveFileId, loadPublicDriveFile]);`;
-  const autoNew = `  // Auto load default Google Drive file on app open (desktop only — มือถือ/iPad ข้ามเพื่อกัน OOM)
+  const autoNew = `  // Auto load default Google Drive file on app open (desktop only — มือถือ/iPad ข้าม auto เพื่อกัน OOM; เปิดจากไฟล์ในเครื่องได้)
   useEffect(() => {
     if (isMobileDevice()) {
       if (!autoLoadAttempted) {
         setAutoLoadAttempted(true);
-        setConversionNote('โหมดมือถือ/iPad: กด «ดาวน์โหลดไฟล์งาน» เพื่อบันทึก DWG ลงเครื่อง แล้วค่อยเปิดไฟล์ — หรือเลือกไฟล์จากเครื่อง');
+        setConversionNote(
+          'โหมดมือถือ/iPad: กด «ดาวน์โหลดไฟล์งาน» แล้วกด «เปิดไฟล์จากเครื่อง» — รองรับไฟล์ใหญ่ได้ (อาจแสดงบางส่วนถ้ามีออบเจ็กต์เยอะมาก)'
+        );
       }
       return;
     }
@@ -256,7 +270,7 @@ async function main() {
     );
   }
   if (!app.includes('downloadLatestCadToDevice')) {
-    const insertAfter = `  // Auto load default Google Drive file on app open (desktop only — มือถือ/iPad ข้ามเพื่อกัน OOM)`;
+    const insertAfter = `  // Auto load default Google Drive file on app open (desktop only — มือถือ/iPad ข้าม auto เพื่อกัน OOM; เปิดจากไฟล์ในเครื่องได้)`;
     const handler = `  const downloadLatestCadToDevice = useCallback(async () => {
     if (!driveFileId) {
       setConversionError('ยังไม่ได้ตั้งค่าโฟลเดอร์ Google Drive');
@@ -270,7 +284,7 @@ async function main() {
         setDriveLoadingStage
       );
       setConversionNote(
-        \`บันทึก \${filename} (\${(sizeBytes / 1048576).toFixed(1)} MB) ลงเครื่องแล้ว — เปิดด้วยแอป CAD หรือกด «เปิดไฟล์» เพื่อดูในเว็บ (ถ้าขนาดไม่เกินขีดจำกัด)\`
+        \`บันทึก \${filename} (\${(sizeBytes / 1048576).toFixed(1)} MB) ลงเครื่องแล้ว — กด «เปิดไฟล์จากเครื่อง» เพื่ออ่านในเว็บ (รองรับไฟล์ใหญ่)\`
       );
     } catch (err) {
       setConversionError((err && err.message) || 'ดาวน์โหลดไฟล์ลงเครื่องไม่สำเร็จ');
@@ -280,7 +294,7 @@ async function main() {
     }
   }, [driveFileId]);
 
-  // Auto load default Google Drive file on app open (desktop only — มือถือ/iPad ข้ามเพื่อกัน OOM)`;
+  // Auto load default Google Drive file on app open (desktop only — มือถือ/iPad ข้าม auto เพื่อกัน OOM; เปิดจากไฟล์ในเครื่องได้)`;
     if (app.includes(insertAfter)) app = app.replace(insertAfter, handler);
   }
 
@@ -295,7 +309,7 @@ async function main() {
         <div className="mobile-download-banner shrink-0 z-10 px-3 py-2.5 bg-emerald-950/90 border-b border-emerald-700/50 text-emerald-50 text-sm">
           <div className="font-semibold mb-1">มือถือ / iPad</div>
           <p className="text-xs opacity-90 mb-2 leading-relaxed">
-            แนะนำให้ดาวน์โหลดไฟล์งานลงเครื่องก่อน แล้วเปิดด้วยแอป CAD หรือกด «เปิดไฟล์» เพื่อเลือกไฟล์จากเครื่อง
+            ดาวน์โหลดไฟล์งานลงเครื่อง แล้วกด «เปิดไฟล์จากเครื่อง» — <strong>รองรับไฟล์ใหญ่</strong> (ถ้าออบเจ็กต์เยอะมาก ระบบจะแสดงบางส่วนเพื่อให้เปิดอ่านได้)
           </p>
           <div className="flex flex-wrap gap-2">
             <button
@@ -331,7 +345,6 @@ async function main() {
     }
   }
 
-  // Export menu: ส่งออก DWG จาก Google Drive (ไฟล์ล่าสุด)
   if (!app.includes('ส่งออกเป็นไฟล์ DWG')) {
     const exportDxfBtn = `              <button
                 onClick={exportDxfFile}
@@ -360,8 +373,6 @@ async function main() {
     if (app.includes(exportDxfBtn)) {
       app = app.replace(exportDxfBtn, withDwg);
       console.log('Added: ส่งออกเป็นไฟล์ DWG (Drive) in export menu');
-    } else {
-      console.warn('export DXF button marker not found');
     }
   }
 

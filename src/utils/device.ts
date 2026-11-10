@@ -28,12 +28,20 @@ export function getRawDxfKeepLimitBytes(): number {
   return isMobileDevice() ? 1 * 1024 * 1024 : 15 * 1024 * 1024;
 }
 
-/** จำนวนเอนทิตีสูงสุดที่เรนเดอร์บนมือถือ */
+/** จำนวนเอนทิตีสูงสุดที่เรนเดอร์บนมือถือ (ไฟล์ใหญ่จะตัดส่วนเกิน แทนการปฏิเสธทั้งไฟล์) */
 export function getMobileEntityCap(): number {
-  return 25000;
+  return 40000;
 }
 
-/** ขนาดไฟล์สูงสุดที่ยอมให้อัปโหลด/โหลดบนมือถือ */
+/**
+ * ขนาดไฟล์สูงสุดที่ยอมให้เปิดจากเครื่องบนมือถือ
+ * หลังดาวน์โหลดลงเครื่องแล้ว อนุญาตไฟล์ใหญ่ขึ้น — กันแรมด้วย entity cap ตอนเรนเดอร์
+ */
 export function getMobileMaxUploadBytes(): number {
-  return 12 * 1024 * 1024;
+  return 80 * 1024 * 1024;
+}
+
+/** ขนาดที่เริ่มเตือนว่าอาจช้า/กินแรม (ยังเปิดได้) */
+export function getMobileWarnUploadBytes(): number {
+  return 20 * 1024 * 1024;
 }
