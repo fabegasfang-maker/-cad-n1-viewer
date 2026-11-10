@@ -10,7 +10,6 @@ export function isMobileDevice(): boolean {
     (navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1) ||
     (/Macintosh/i.test(ua) && (navigator.maxTouchPoints || 0) > 1);
   const coarse = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
-  // อย่าใช้แค่ความกว้างจอ — iPad Pro กว้างเกิน 900 ได้
   const touchPrimary = coarse || (navigator.maxTouchPoints || 0) > 1;
 
   return uaMobile || iPad || (touchPrimary && window.innerWidth > 0 && window.innerWidth < 1200);
@@ -28,14 +27,18 @@ export function getRawDxfKeepLimitBytes(): number {
   return isMobileDevice() ? 1 * 1024 * 1024 : 15 * 1024 * 1024;
 }
 
-/** จำนวนเอนทิตีสูงสุดที่เรนเดอร์บนมือถือ (ไฟล์ใหญ่จะตัดส่วนเกิน แทนการปฏิเสธทั้งไฟล์) */
+/**
+ * จำนวนเอนทิตีสูงสุดที่เรนเดอร์บนมือถือ/iPad
+ * ตั้งสูงมาก = แทบไม่จำกัด (ให้ iPad ลองเปิดเต็มไฟล์)
+ * ถ้าเครื่องแรมน้อยแล้วยังค้าง ค่อยลดกลับทีหลังได้
+ */
 export function getMobileEntityCap(): number {
-  return 40000;
+  return Number.MAX_SAFE_INTEGER;
 }
 
 /**
  * ขนาดไฟล์สูงสุดที่ยอมให้เปิดจากเครื่องบนมือถือ
- * หลังดาวน์โหลดลงเครื่องแล้ว อนุญาตไฟล์ใหญ่ขึ้น — กันแรมด้วย entity cap ตอนเรนเดอร์
+ * หลังดาวน์โหลดลงเครื่องแล้ว อนุญาตไฟล์ใหญ่ขึ้น
  */
 export function getMobileMaxUploadBytes(): number {
   return 80 * 1024 * 1024;
