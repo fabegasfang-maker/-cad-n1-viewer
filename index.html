@@ -1,21 +1,131 @@
 <!doctype html>
-<html lang="th" class="h-full">
+<html lang="th">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>N1 CAD Viewer</title>
-    <meta name="description" content="โปรแกรมเปิด ดู และแปลงไฟล์แบบร่าง CAD / DWG / DXF รองรับฟอนต์และข้อความภาษาไทยสมบูรณ์แบบ พร้อมระบบเรนเดอร์ Canvas ปรับขนาดอักษรและความหนาเส้น" />
-    <meta property="og:title" content="N1 CAD Viewer" />
-    <meta property="og:description" content="โปรแกรมเปิด ดู และแปลงไฟล์แบบร่าง CAD / DWG / DXF รองรับฟอนต์และข้อความภาษาไทยสมบูรณ์แบบ พร้อมระบบเรนเดอร์ Canvas ปรับขนาดอักษรและความหนาเส้น" />
-    <meta property="og:type" content="website" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Noto+Sans+Thai:wght@300;400;500;600;700&family=Sarabun:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <title>แผนผังจ่ายไฟ</title>
+    <meta name="description" content="เปิดดูแผนผังจ่ายไฟแบบออนไลน์ หรือดาวน์โหลดไฟล์แผนผังล่าสุด" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --bg: #f4f6f8;
+        --card: #ffffff;
+        --text: #0f172a;
+        --muted: #64748b;
+        --line: #e2e8f0;
+        --primary: #1d4ed8;
+        --primary-hover: #1e40af;
+        --secondary-hover: #f1f5f9;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #020617;
+          --card: #0f172a;
+          --text: #f1f5f9;
+          --muted: #94a3b8;
+          --line: #1e293b;
+          --primary: #3b82f6;
+          --primary-hover: #2563eb;
+          --secondary-hover: #1e293b;
+        }
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; }
+      body {
+        font-family: 'Noto Sans Thai', system-ui, -apple-system, 'Segoe UI', sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+      }
+      main {
+        width: 100%;
+        max-width: 420px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 32px 24px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 1.5rem;
+        font-weight: 700;
+        text-align: center;
+      }
+      .sub {
+        margin: 6px 0 28px;
+        text-align: center;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+      .actions { display: flex; flex-direction: column; gap: 12px; }
+      .btn {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+        width: 100%;
+        min-height: 64px;
+        padding: 14px 16px;
+        border-radius: 12px;
+        border: 1px solid var(--line);
+        background: var(--card);
+        color: var(--text);
+        font: inherit;
+        font-size: 1.05rem;
+        font-weight: 600;
+        text-align: center;
+        text-decoration: none;
+        cursor: pointer;
+        justify-content: center;
+      }
+      .nw { white-space: nowrap; }
+      .btn small { font-weight: 400; font-size: 0.8rem; color: var(--muted); }
+      .btn:hover { background: var(--secondary-hover); }
+      .btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+      .btn.primary small { color: rgba(255, 255, 255, 0.8); }
+      .btn.primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+      .btn:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+      .btn[disabled] { opacity: 0.6; cursor: progress; }
+      #status {
+        margin: 16px 0 0;
+        min-height: 1.4em;
+        text-align: center;
+        font-size: 0.85rem;
+        color: var(--muted);
+        word-break: break-word;
+      }
+      #status.error { color: #dc2626; }
+      #status a { color: var(--primary); }
+    </style>
   </head>
-  <body class="h-full bg-slate-950 text-slate-100 overflow-hidden select-none">
-    <div id="root" class="h-full w-full"></div>
-    <script type="module" src="/src/main.tsx"></script>
+  <body>
+    <main>
+      <h1>แผนผังจ่ายไฟ</h1>
+      <p class="sub">เลือกวิธีเปิดดูแผนผัง</p>
+
+      <div class="actions">
+        <a class="btn primary" id="btn-pc" href="viewer.html?device=pc">
+          แผนผังจ่ายไฟแบบออนไลน์ PC
+          <small>สำหรับคอมพิวเตอร์ / จอใหญ่</small>
+        </a>
+        <a class="btn primary" id="btn-mobile" href="viewer.html?device=mobile">
+          <span>แผนผังจ่ายไฟแบบออนไลน์ <span class="nw">tablet / มือถือ</span></span>
+          <small>ไฟล์เบา เปิดได้ลื่นบนอุปกรณ์พกพา</small>
+        </a>
+        <button class="btn" id="btn-download" type="button">
+          ดาวน์โหลดไฟล์แผนผังล่าสุด
+          <small>บันทึกไฟล์ลงเครื่อง</small>
+        </button>
+      </div>
+
+      <p id="status" role="status" aria-live="polite"></p>
+    </main>
+
+    <script type="module" src="/src/landing.ts"></script>
   </body>
 </html>
-

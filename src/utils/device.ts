@@ -1,6 +1,28 @@
+/**
+ * ผู้ใช้เลือกโหมดจากหน้าแรกได้ (?device=pc | ?device=mobile)
+ * จำไว้ในแท็บนี้ (sessionStorage) เพื่อให้รีเฟรชแล้วยังเป็นโหมดเดิม
+ */
+function getDeviceOverride(): 'pc' | 'mobile' | null {
+  try {
+    const q = new URLSearchParams(window.location.search).get('device');
+    if (q === 'pc' || q === 'mobile') {
+      sessionStorage.setItem('cad_device_mode', q);
+      return q;
+    }
+    const saved = sessionStorage.getItem('cad_device_mode');
+    if (saved === 'pc' || saved === 'mobile') return saved;
+  } catch {
+    // sessionStorage ใช้ไม่ได้ (เช่นโหมดส่วนตัวบางเบราว์เซอร์) → ตรวจจับอัตโนมัติ
+  }
+  return null;
+}
+
 /** ตรวจจับอุปกรณ์มือถือ / iPad เพื่อจำกัดแรมและการโหลดอัตโนมัติ */
 export function isMobileDevice(): boolean {
   if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+
+  const override = getDeviceOverride();
+  if (override) return override === 'mobile';
 
   const ua = navigator.userAgent || '';
   const uaMobile = /iPhone|iPod|Android.*Mobile|webOS|BlackBerry|IEMobile|Opera Mini/i.test(ua);

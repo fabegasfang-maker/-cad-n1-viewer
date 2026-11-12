@@ -7,6 +7,15 @@ export default defineConfig(() => {
   return {
     base: './',
     plugins: [react(), tailwindcss()],
+    build: {
+      rollupOptions: {
+        // index.html = หน้าแรก (3 ปุ่ม), viewer.html = ตัวดูแผนผัง CAD
+        input: {
+          main: path.resolve(__dirname, 'index.html'),
+          viewer: path.resolve(__dirname, 'viewer.html'),
+        },
+      },
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
