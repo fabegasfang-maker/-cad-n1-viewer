@@ -101,6 +101,68 @@
       }
       #status.error { color: #dc2626; }
       #status a { color: var(--primary); }
+
+      /* ปุ่ม setting มุมล่างขวา */
+      #btn-settings {
+        position: fixed;
+        right: 16px;
+        bottom: 16px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 10px 14px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: var(--card);
+        color: var(--muted);
+        font: inherit;
+        font-size: 0.85rem;
+        cursor: pointer;
+      }
+      #btn-settings:hover { background: var(--secondary-hover); color: var(--text); }
+      #btn-settings:focus-visible, dialog button:focus-visible, dialog input:focus-visible {
+        outline: 3px solid var(--primary);
+        outline-offset: 2px;
+      }
+      dialog {
+        width: calc(100% - 32px);
+        max-width: 440px;
+        padding: 24px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--card);
+        color: var(--text);
+        font: inherit;
+      }
+      dialog::backdrop { background: rgba(2, 6, 23, 0.55); }
+      dialog h2 { margin: 0 0 16px; font-size: 1.15rem; }
+      dialog label { display: block; font-size: 0.9rem; font-weight: 600; margin-bottom: 6px; }
+      dialog input[type='text'] {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--bg);
+        color: var(--text);
+        font: inherit;
+        font-size: 0.9rem;
+      }
+      dialog .hint { margin: 8px 0 0; font-size: 0.8rem; color: var(--muted); word-break: break-all; }
+      dialog .hint.error { color: #dc2626; }
+      dialog .row { display: flex; gap: 8px; margin-top: 20px; justify-content: flex-end; flex-wrap: wrap; }
+      dialog .row button {
+        padding: 10px 16px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: var(--card);
+        color: var(--text);
+        font: inherit;
+        font-size: 0.9rem;
+        cursor: pointer;
+      }
+      dialog .row button:hover { background: var(--secondary-hover); }
+      dialog .row .save { background: var(--primary); border-color: var(--primary); color: #fff; }
+      dialog .row .save:hover { background: var(--primary-hover); }
     </style>
   </head>
   <body>
@@ -125,6 +187,23 @@
 
       <p id="status" role="status" aria-live="polite"></p>
     </main>
+
+    <button id="btn-settings" type="button" aria-haspopup="dialog">⚙ ตั้งค่า</button>
+
+    <dialog id="settings-dialog" aria-labelledby="settings-title">
+      <form method="dialog" id="settings-form">
+        <h2 id="settings-title">ตั้งค่า</h2>
+        <label for="drive-input">ตำแหน่งไฟล์ / โฟลเดอร์ใน Google Drive</label>
+        <input id="drive-input" type="text" autocomplete="off" spellcheck="false"
+               placeholder="วางลิงก์ Google Drive หรือ ID" />
+        <p class="hint" id="drive-hint">ใช้เมื่อย้ายที่เก็บแผนผัง วางลิงก์โฟลเดอร์ใหม่ได้เลย ต้องแชร์เป็น "ทุกคนที่มีลิงก์"</p>
+        <div class="row">
+          <button type="button" id="settings-reset">ใช้ค่าเริ่มต้น</button>
+          <button type="button" id="settings-cancel">ยกเลิก</button>
+          <button type="submit" class="save">บันทึก</button>
+        </div>
+      </form>
+    </dialog>
 
     <script type="module" src="/src/landing.ts"></script>
   </body>
