@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  schedule:
+    # ตรวจไฟล์ DWG ใหม่บน Drive ทุก 30 นาที แล้วสร้าง latest.pdf ใหม่เมื่อมีการเปลี่ยนแปลง
+    - cron: '*/30 * * * *'
 
 permissions:
   contents: read
@@ -26,6 +29,21 @@ jobs:
         run: bun install
       - name: Restore Phase A (App + Canvas mobile guards)
         run: node scripts/restore-phase-a.mjs
+      - name: Install PDF tools (Thai fonts + ezdxf + PyMuPDF)
+        continue-on-error: true
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q fonts-thai-tlwg-ttf
+          python3 -m pip install --break-system-packages -q ezdxf pymupdf
+      - name: Build latest.pdf from newest DWG on Drive
+        # พังก็ไม่ทำให้ deploy ล้ม: สคริปต์จะคง PDF เดิมไว้
+        continue-on-error: true
+        run: node scripts/pdf/build-latest-pdf.mjs
+        env:
+          GOOGLE_API_KEY: ${{ vars.VITE_GOOGLE_API_KEY }}
+          # ตั้งค่า Variable ชื่อ DRIVE_FOLDER_ID ใน repo เมื่อย้ายโฟลเดอร์ Drive (ไม่ตั้ง = ค่าเริ่มต้น)
+          DRIVE_FOLDER_ID: ${{ vars.DRIVE_FOLDER_ID }}
+          SITE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
       - name: Build
         run: bun run build
         env:

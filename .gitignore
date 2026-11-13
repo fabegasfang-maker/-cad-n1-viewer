@@ -6,3 +6,7 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# สร้างอัตโนมัติใน GitHub Actions (scripts/pdf/build-latest-pdf.mjs)
+public/latest.pdf
+public/latest.json

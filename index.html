@@ -83,6 +83,7 @@
         cursor: pointer;
         justify-content: center;
       }
+      .btn[hidden] { display: none; }
       .nw { white-space: nowrap; }
       .btn small { font-weight: 400; font-size: 0.8rem; color: var(--muted); }
       .btn:hover { background: var(--secondary-hover); }
@@ -178,6 +179,11 @@
         <a class="btn primary" id="btn-mobile" href="viewer.html?device=mobile">
           <span>แผนผังจ่ายไฟแบบออนไลน์ <span class="nw">tablet / มือถือ</span></span>
           <small>ไฟล์เบา เปิดได้ลื่นบนอุปกรณ์พกพา</small>
+        </a>
+        <!-- แสดงเมื่อมี latest.pdf ที่ระบบสร้างอัตโนมัติจาก DWG ล่าสุด (เปิดได้ทุกเครื่อง ไม่ต้องมีโปรแกรม CAD) -->
+        <a class="btn primary" id="btn-pdf" href="latest.pdf" target="_blank" rel="noopener" hidden>
+          เปิดแผนผังเป็น PDF
+          <small id="pdf-info">เปิดได้ทุกเครื่อง ซูมดูได้ ไม่ต้องใช้โปรแกรม CAD</small>
         </a>
         <button class="btn" id="btn-download" type="button">
           ดาวน์โหลดไฟล์แผนผังล่าสุด

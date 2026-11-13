@@ -117,3 +117,26 @@ btn.addEventListener('click', async () => {
     btn.disabled = false;
   }
 });
+
+// ---------- ปุ่ม PDF (แสดงเมื่อระบบสร้าง latest.pdf ไว้แล้ว) ----------
+(async () => {
+  try {
+    const res = await fetch('latest.json', { cache: 'no-store' });
+    if (!res.ok) return;
+    const meta = (await res.json()) as { sourceName?: string; sourceModified?: string; pdfBytes?: number };
+    // ป้องกันกรณีเว็บ SPA ตอบ index.html กลับมาแทน 404
+    if (!meta || typeof meta !== 'object') return;
+    const link = document.getElementById('btn-pdf') as HTMLAnchorElement | null;
+    const info = document.getElementById('pdf-info');
+    if (!link) return;
+    const when = meta.sourceModified ? new Date(meta.sourceModified) : null;
+    if (info && when && !isNaN(+when)) {
+      const d = when.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
+      const mb = meta.pdfBytes ? ` · ${(meta.pdfBytes / 1048576).toFixed(1)} MB` : '';
+      info.textContent = `ผังอัปเดต ${d}${mb} · ซูมดูได้ ไม่ต้องใช้โปรแกรม CAD`;
+    }
+    link.hidden = false;
+  } catch {
+    // ไม่มี latest.json → ซ่อนปุ่มไว้ตามเดิม
+  }
+})();
