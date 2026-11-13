@@ -348,6 +348,10 @@ def main(src: str, dst: str, texts_out: str = "") -> None:
         seen = set()
         items = []
         for t, x, y, fs in index:
+            # ข้อความที่ LibreDWG แปลงเพี้ยนอาจมีอักขระ surrogate → ตัดทิ้งก่อนเขียน JSON
+            t = t.encode("utf-8", "ignore").decode("utf-8", "ignore").replace("\ufffd", "").strip()
+            if not t:
+                continue
             k = (t, round(x / 4), round(y / 4))
             if k in seen:
                 continue
