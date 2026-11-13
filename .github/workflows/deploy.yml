@@ -15,7 +15,8 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  # ไม่ตัดรอบที่กำลังแปลง PDF กลางคัน (ผังใหญ่ใช้เวลาหลายนาที) รอบใหม่จะรอคิวแทน
+  cancel-in-progress: false
 
 jobs:
   build:
