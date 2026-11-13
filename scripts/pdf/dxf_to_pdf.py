@@ -100,6 +100,15 @@ def main(src: str, dst: str) -> None:
     off = [l.dxf.name for l in doc.layers if not l.is_on() or l.is_frozen()]
     print(f"เลเยอร์ทั้งหมด {len(doc.layers)} (ปิด/แช่แข็ง {len(off)}), บล็อก {len(doc.blocks)}")
 
+    # ตัวดูบนเว็บแสดงทุกเลเยอร์ แต่ไฟล์ DXF ที่ได้จากการแปลงมักมีสถานะ "ปิด/แช่แข็ง" เพี้ยน
+    # (ผังจริง: ปิด 17 จาก 18 เลเยอร์ → PDF ว่างเปล่า) จึงเปิดทุกเลเยอร์ให้ตรงกับตัวดู
+    for layer in doc.layers:
+        try:
+            layer.on()
+            layer.thaw()
+        except Exception:
+            pass
+
     w = max(ext.size.x, 1e-6)
     h = max(ext.size.y, 1e-6)
     aspect = min(max(w / h, 1 / MAX_ASPECT), MAX_ASPECT)
