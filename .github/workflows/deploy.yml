@@ -43,6 +43,8 @@ jobs:
           GOOGLE_API_KEY: ${{ vars.VITE_GOOGLE_API_KEY }}
           # ตั้งค่า Variable ชื่อ DRIVE_FOLDER_ID ใน repo เมื่อย้ายโฟลเดอร์ Drive (ไม่ตั้ง = ค่าเริ่มต้น)
           DRIVE_FOLDER_ID: ${{ vars.DRIVE_FOLDER_ID }}
+          # สั่งรันมือ (workflow_dispatch) = สร้าง PDF ใหม่เสมอ แม้ไฟล์ใน Drive ไม่เปลี่ยน
+          FORCE_PDF: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
           SITE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
       - name: Build
         run: bun run build

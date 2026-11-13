@@ -132,7 +132,7 @@ async function main() {
   const latest = await resolveLatest();
   console.log(`ไฟล์ล่าสุดบน Drive: ${latest.name} (${latest.modifiedTime}, ${(Number(latest.size || 0) / 1048576).toFixed(1)} MB)`);
 
-  if (prev && prev.meta.sourceId === latest.id && prev.meta.sourceModified === latest.modifiedTime) {
+  if (!process.env.FORCE_PDF && prev && prev.meta.sourceId === latest.id && prev.meta.sourceModified === latest.modifiedTime) {
     console.log('ไฟล์ยังไม่เปลี่ยน → ใช้ PDF เดิม');
     return;
   }
