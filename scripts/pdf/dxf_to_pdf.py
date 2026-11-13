@@ -91,6 +91,15 @@ def main(src: str, dst: str) -> None:
     if not ext.has_data:
         raise SystemExit("ไม่พบเส้น/วัตถุในผังหลัก (Model space ว่าง)")
 
+    # รายงานสถิติ เพื่อตรวจว่าอ่านผังได้ครบหรือไม่ (ดูในหน้า Actions)
+    from collections import Counter
+
+    kinds = Counter(e.dxftype() for e in msp)
+    print(f"Model space: {sum(kinds.values())} วัตถุ → " + ", ".join(f"{k}={v}" for k, v in kinds.most_common(10)))
+    print(f"Extents: x {ext.extmin.x:.0f}..{ext.extmax.x:.0f}  y {ext.extmin.y:.0f}..{ext.extmax.y:.0f}")
+    off = [l.dxf.name for l in doc.layers if not l.is_on() or l.is_frozen()]
+    print(f"เลเยอร์ทั้งหมด {len(doc.layers)} (ปิด/แช่แข็ง {len(off)}), บล็อก {len(doc.blocks)}")
+
     w = max(ext.size.x, 1e-6)
     h = max(ext.size.y, 1e-6)
     aspect = min(max(w / h, 1 / MAX_ASPECT), MAX_ASPECT)
@@ -113,6 +122,14 @@ def main(src: str, dst: str) -> None:
     pdf = backend.get_pdf_bytes(page, settings=layout.Settings(fit_page=True))
     with open(dst, "wb") as f:
         f.write(pdf)
+    try:
+        import pymupdf as _mu
+
+        with _mu.open(dst) as d:
+            pg = d[0]
+            print(f"ในหน้า PDF: เส้น/รูปทรง {len(pg.get_drawings())} ชิ้น, ตัวอักษร {len(pg.get_text())} ตัว")
+    except Exception as e:  # รายงานเฉยๆ ไม่ให้ล้ม
+        print(f"(ตรวจ PDF ไม่ได้: {e})")
     print(f"PDF ok: {dst} ({len(pdf)/1048576:.1f} MB, page {page_w:.0f}x{page_h:.0f} mm)")
 
 
