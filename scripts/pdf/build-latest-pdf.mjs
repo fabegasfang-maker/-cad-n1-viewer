@@ -55,8 +55,11 @@ function pickDwg(files) {
   return dwgs.find((f) => !MOBILE_NAME.test(f.name)) || dwgs[0] || null;
 }
 
+// API key ของโปรเจกต์นี้จำกัดการเรียกตามเว็บไซต์ (HTTP referrer) จึงต้องส่ง Referer ของเว็บเราไปด้วย
+const HEADERS = SITE_URL ? { Referer: `${SITE_URL}/` } : {};
+
 async function api(url) {
-  const res = await fetch(url);
+  const res = await fetch(url, { headers: HEADERS });
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
     try { msg = (await res.json())?.error?.message || msg; } catch {}
@@ -76,14 +79,22 @@ async function resolveLatest() {
   if (meta.mimeType !== FOLDER_MIME) return meta; // ตั้งค่าเป็นไฟล์ตรงๆ
   const children = await listChildren(FOLDER_ID);
   const folders = children.filter((f) => f.mimeType === FOLDER_MIME);
+  console.log(`--- โฟลเดอร์ย่อยใน Drive (${folders.length}) เรียงตามกติกา "เดือนล่าสุด" ---`);
+  for (const f of [...folders].sort((a, b) => monthKey(b.name) - monthKey(a.name) || ts(b) - ts(a)).slice(0, 8)) {
+    console.log(`  [key=${monthKey(f.name)}] ${f.name}  (แก้ไข ${f.modifiedTime})`);
+  }
   const months = folders.filter((f) => monthKey(f.name) > 0).sort((a, b) => monthKey(b.name) - monthKey(a.name) || ts(b) - ts(a));
   const tryFolders = months.length ? months : folders.sort((a, b) => monthKey(b.name) - monthKey(a.name));
   let fromMonth = null;
   for (const f of tryFolders) {
-    const pick = pickDwg(await listChildren(f.id));
+    const inner = await listChildren(f.id);
+    console.log(`--- ในโฟลเดอร์ "${f.name}" ---`);
+    for (const x of inner.slice(0, 8)) console.log(`  ${x.name}  (${x.mimeType === FOLDER_MIME ? 'โฟลเดอร์' : 'ไฟล์'}, แก้ไข ${x.modifiedTime})`);
+    const pick = pickDwg(inner);
     if (pick) { fromMonth = pick; break; }
   }
   const fromRoot = pickDwg(children);
+  console.log(`--- ไฟล์ .dwg ที่รากโฟลเดอร์: ${fromRoot ? `${fromRoot.name} (แก้ไข ${fromRoot.modifiedTime})` : 'ไม่มี'}`);
   const best = fromMonth && fromRoot ? (ts(fromRoot) > ts(fromMonth) ? fromRoot : fromMonth) : fromMonth || fromRoot;
   if (!best) throw new Error('ไม่พบไฟล์ .dwg ในโฟลเดอร์ Drive');
   return best;
@@ -130,7 +141,7 @@ async function main() {
   const pdf = path.join(tmp, 'out.pdf');
 
   console.log('ดาวน์โหลด DWG...');
-  const res = await fetch(`${API}/${latest.id}?alt=media&supportsAllDrives=true&key=${encodeURIComponent(KEY)}`);
+  const res = await fetch(`${API}/${latest.id}?alt=media&supportsAllDrives=true&key=${encodeURIComponent(KEY)}`, { headers: HEADERS });
   if (!res.ok) throw new Error(`ดาวน์โหลด DWG ไม่สำเร็จ (HTTP ${res.status})`);
   fs.writeFileSync(dwg, Buffer.from(await res.arrayBuffer()));
 
