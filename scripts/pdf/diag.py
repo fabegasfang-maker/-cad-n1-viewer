@@ -133,8 +133,46 @@ def cfg_of(**kw):
     return Configuration(**base)
 
 
+def raw_scan(path, keys):
+    """ค้นสตริงในไฟล์ DXF ดิบ (ก่อน ezdxf) บอกว่าอยู่ในส่วนไหน/บล็อกไหน/วัตถุชนิดใด"""
+    with open(path, encoding="utf-8", errors="replace") as f:
+        lines = f.read().split("\n")
+    print(f"[raw] DXF {len(lines)} บรรทัด")
+    sec = blk = etype = None
+    hits = {k: [] for k in keys}
+    ent_count = Counter()
+    i = 0
+    while i + 1 < len(lines):
+        code, val = lines[i].strip(), lines[i + 1].rstrip("\r")
+        if code == "0":
+            if val == "SECTION":
+                pass
+            elif val == "ENDSEC":
+                sec = None
+            elif val == "BLOCK":
+                etype = "BLOCK"
+            else:
+                etype = val
+                if sec == "ENTITIES":
+                    ent_count[val] += 1
+        elif code == "2" and etype is None and lines[i - 2].strip() == "0" and lines[i - 1].strip() == "SECTION":
+            sec = val
+        elif code == "2" and etype == "BLOCK":
+            blk = val
+        elif code == "2" and lines[i - 1].strip() == "SECTION":
+            sec = val
+        for k in keys:
+            if k in val and code in ("1", "3"):
+                hits[k].append((i, sec, blk if sec == "BLOCKS" else None, etype))
+        i += 2
+    for k, v in hits.items():
+        print(f"[raw] '{k}': {len(v)} จุด", v[:6])
+    print("[raw] ชนิดวัตถุใน ENTITIES:", dict(ent_count.most_common(12)))
+
+
 def main(src, out_dir):
     os.makedirs(out_dir, exist_ok=True)
+    raw_scan(src, os.environ.get("DIAG_RAW", "CMD04VS-116,CMD04VS-117,CMD09VS-103,R3,Compact Unit,RMU 1,RMU 2,50kVA").split(","))
     fixed = src + ".fixed.dxf"
     D.sanitize_dxf(src, fixed)
     try:
