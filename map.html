@@ -38,7 +38,6 @@
       .leaflet-container { background: #fff; font: inherit; -webkit-tap-highlight-color: transparent; }
       .leaflet-tile { image-rendering: auto; }
 
-      /* แถบบน: ปุ่มกลับ + ช่องค้นหา */
       #bar {
         position: absolute; z-index: 1000; left: 0; right: 0; top: 0;
         padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) 8px max(8px, env(safe-area-inset-left));
@@ -56,7 +55,7 @@
       #q {
         width: 100%; min-height: 44px; padding: 0 14px; border-radius: 12px;
         border: 1px solid var(--line); background: var(--card); color: var(--text);
-        font: inherit; font-size: 16px; /* 16px กัน iOS ซูมหน้าเองตอนแตะช่องพิมพ์ */
+        font: inherit; font-size: 16px;
         box-shadow: 0 1px 6px rgba(0,0,0,.18);
       }
       #q::placeholder { color: var(--muted); }
@@ -72,7 +71,6 @@
       #results li.empty { color: var(--muted); cursor: default; }
       #q:focus-visible, .chip:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
 
-      /* ป้ายวันที่ผัง */
       #info {
         position: absolute; z-index: 1000; left: max(8px, env(safe-area-inset-left)); bottom: max(8px, env(safe-area-inset-bottom));
         max-width: calc(100% - 96px); padding: 6px 10px; border-radius: 10px;
@@ -82,7 +80,31 @@
       .leaflet-bottom.leaflet-right { margin-bottom: env(safe-area-inset-bottom); margin-right: env(safe-area-inset-right); }
       .leaflet-bar a { width: 40px; height: 40px; line-height: 40px; font-size: 22px; }
 
-      /* ข้อความสถานะ (โหลด/ยังไม่มีข้อมูล) */
+      /* ป้ายข้อความคม (DOM) ตอนซูมใกล้ — ไม่เบลอเหมือน tile */
+      .cad-label {
+        background: transparent !important;
+        border: none !important;
+      }
+      .cad-label span {
+        display: inline-block;
+        white-space: nowrap;
+        max-width: 280px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-weight: 600;
+        line-height: 1.15;
+        color: #0f172a;
+        text-shadow:
+          0 0 2px #fff,
+          0 0 3px #fff,
+          1px 0 0 #fff,
+          -1px 0 0 #fff,
+          0 1px 0 #fff,
+          0 -1px 0 #fff;
+        pointer-events: none;
+        -webkit-font-smoothing: antialiased;
+      }
+
       #msg {
         position: absolute; z-index: 900; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px;
       }
@@ -134,6 +156,14 @@
           msg.hidden = false;
         }
 
+        function esc(s) {
+          return String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+        }
+
         fetch('map/meta.json', { cache: 'no-cache' })
           .then(function (r) {
             if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -162,7 +192,6 @@
             maxBoundsViscosity: 0.7
           });
 
-          // พิกเซลของภาพที่ซูมสูงสุด -> พิกัดแผนที่ (ซ้ายบน = (0,0), y ลง)
           function ll(x, y) { return map.unproject([x, y], Z); }
           var bounds = L.latLngBounds(ll(0, H), ll(W, 0));
           var fitZoom = map.getBoundsZoom(bounds, false);
@@ -177,7 +206,7 @@
             maxZoom: Z + 2,
             noWrap: true,
             bounds: bounds,
-            errorTileUrl: BLANK, // กระเบื้องที่ว่างเปล่าไม่มีไฟล์ (404) ให้แสดงเป็นสีขาว
+            errorTileUrl: BLANK,
             keepBuffer: 3,
             updateWhenIdle: false
           }).addTo(map);
@@ -196,13 +225,15 @@
           if (meta.sourceName) parts.push(meta.sourceName.replace(/\.(dwg|dxf)$/i, ''));
           if (parts.length) { info.textContent = parts.join(' · '); info.hidden = false; }
 
-          setupSearch(map, Z, ll);
+          setupSearchAndLabels(map, Z, ll, W, H);
         }
 
-        function setupSearch(map, Z, ll) {
+        function setupSearchAndLabels(map, Z, ll, W, H) {
           var q = document.getElementById('q');
           var list = document.getElementById('results');
           var items = null, loading = false, marker = null;
+          var labelLayer = L.layerGroup().addTo(map);
+          var labelTimer = null;
 
           function load() {
             if (items || loading) return;
@@ -210,15 +241,26 @@
             fetch('map/index.json', { cache: 'no-cache' })
               .then(function (r) { return r.json(); })
               .then(function (j) {
-                items = j.items.map(function (it) { return { t: it[0], k: it[0].toLowerCase(), x: it[1], y: it[2] }; });
+                items = (j.items || []).map(function (it) {
+                  return {
+                    t: it[0],
+                    k: String(it[0]).toLowerCase(),
+                    x: it[1],
+                    y: it[2],
+                    fs: it[3] || 10
+                  };
+                });
+                // เรียงใหญ่ก่อน เพื่อป้ายสำคัญโผล่ก่อนเมื่อจำกัดจำนวน
+                items.sort(function (a, b) { return b.fs - a.fs; });
                 q.disabled = false;
                 if (q.value) render();
+                scheduleLabels();
               })
               .catch(function () { q.placeholder = 'ค้นหาใช้ไม่ได้ในขณะนี้'; })
               .then(function () { loading = false; });
           }
           load();
-          q.disabled = false; // พิมพ์ได้ทันที จะค้นเมื่อโหลดดัชนีเสร็จ
+          q.disabled = false;
 
           function search(text) {
             var s = text.trim().toLowerCase();
@@ -265,6 +307,52 @@
             if (marker) map.removeLayer(marker);
             marker = L.circleMarker(p, { radius: 26, color: '#dc2626', weight: 3, fillColor: '#dc2626', fillOpacity: 0.08 }).addTo(map);
             marker.on('click', function () { map.removeLayer(marker); marker = null; });
+            setTimeout(scheduleLabels, 900);
+          }
+
+          function scheduleLabels() {
+            if (labelTimer) clearTimeout(labelTimer);
+            labelTimer = setTimeout(updateLabels, 120);
+          }
+
+          function updateLabels() {
+            labelLayer.clearLayers();
+            if (!items || !items.length) return;
+            var z = map.getZoom();
+            // แสดงป้ายเมื่อซูมใกล้ระดับ native สูงสุด (และ overzoom)
+            if (z < Z - 1.25) return;
+
+            var b = map.getBounds();
+            var sw = map.project(b.getSouthWest(), Z);
+            var ne = map.project(b.getNorthEast(), Z);
+            var minX = Math.min(sw.x, ne.x) - 40;
+            var maxX = Math.max(sw.x, ne.x) + 40;
+            var minY = Math.min(sw.y, ne.y) - 40;
+            var maxY = Math.max(sw.y, ne.y) + 40;
+
+            // ยิ่งซูมใกล้ ยิ่งยอมรับตัวหนังสือเล็ก
+            var minFs = z >= Z + 0.5 ? 6 : (z >= Z - 0.25 ? 9 : 12);
+            var maxLabels = z >= Z ? 220 : 120;
+            var scale = Math.pow(2, z - Z);
+            var shown = 0;
+
+            for (var i = 0; i < items.length; i++) {
+              var it = items[i];
+              if (it.fs < minFs) continue;
+              if (it.x < minX || it.x > maxX || it.y < minY || it.y > maxY) continue;
+              // ตัดข้อความยาวมาก
+              if (it.t.length > 60 && it.fs < 14) continue;
+
+              var fontPx = Math.max(10, Math.min(28, it.fs * scale * 0.85));
+              var icon = L.divIcon({
+                className: 'cad-label',
+                html: '<span style="font-size:' + fontPx.toFixed(1) + 'px">' + esc(it.t) + '</span>',
+                iconSize: [1, 1],
+                iconAnchor: [0, fontPx * 0.7]
+              });
+              L.marker(ll(it.x, it.y), { icon: icon, interactive: false, keyboard: false }).addTo(labelLayer);
+              if (++shown >= maxLabels) break;
+            }
           }
 
           q.addEventListener('input', render);
@@ -274,6 +362,7 @@
             if (e.key === 'Escape') { list.hidden = true; q.blur(); }
           });
           map.on('click movestart', function () { list.hidden = true; });
+          map.on('moveend zoomend', scheduleLabels);
         }
       })();
     </script>

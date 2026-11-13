@@ -4,12 +4,11 @@
 ใช้: make-tiles.py in.pdf texts.json out_dir
 
 ผลลัพธ์ใน out_dir:
-  tiles/{z}/{x}/{y}.webp   z=0 เล็กสุด (ทั้งผังอยู่ในกระเบื้องเดียว) ... z=maxZoom ละเอียดสุด
-  meta.json                ขนาดภาพที่ระดับละเอียดสุด, maxZoom, ...
-  index.json               ข้อความในผัง + ตำแหน่ง (พิกเซลที่ระดับละเอียดสุด) สำหรับช่องค้นหา
+  tiles/{z}/{x}/{y}.webp   z=0 เล็กสุด ... z=maxZoom ละเอียดสุด
+  meta.json
+  index.json               [ข้อความ, x_px, y_px, fs_px] ที่ระดับละเอียดสุด
 
-ความละเอียดสูงสุดเลือกอัตโนมัติจากขนาดตัวหนังสือจริงในผัง: ตัวเล็กสุด (เปอร์เซ็นไทล์ที่ 10)
-ต้องสูง >= TILE_TARGET_TEXT_PX พิกเซลที่ซูมสูงสุด แต่ไม่เกิน TILE_MAX_WIDTH_PX
+ความละเอียดสูงสุด: ตัวหนังสือเล็ก (p10) >= TILE_TARGET_TEXT_PX พิกเซล
 """
 import json
 import math
@@ -24,12 +23,14 @@ import pymupdf as mu
 from PIL import Image
 
 TILE = 256
-CHUNK_TILES = 8  # เรนเดอร์ทีละ 8x8 กระเบื้อง (2048x2048 พิกเซล) แล้วค่อยหั่น
-TARGET_TEXT_PX = float(os.environ.get("TILE_TARGET_TEXT_PX", "9"))
-MIN_WIDTH_PX = int(os.environ.get("TILE_MIN_WIDTH_PX", "8192"))
-MAX_WIDTH_PX = int(os.environ.get("TILE_MAX_WIDTH_PX", "40960"))
-WEBP_QUALITY = int(os.environ.get("TILE_WEBP_QUALITY", "86"))
-WEBP_LOSSLESS = os.environ.get("TILE_WEBP_LOSSLESS", "1") == "1"  # ภาพเส้นบีบแบบไม่สูญเสียได้เล็กกว่าและคมกว่า
+CHUNK_TILES = 8
+# เดิม 9 px → ตัวหนังสือยังเล็ก/เบลอตอนซูมใกล้; ดันขึ้นให้คมขึ้น (แลกกับไฟล์ใหญ่ขึ้น)
+TARGET_TEXT_PX = float(os.environ.get("TILE_TARGET_TEXT_PX", "14"))
+MIN_WIDTH_PX = int(os.environ.get("TILE_MIN_WIDTH_PX", "12288"))
+MAX_WIDTH_PX = int(os.environ.get("TILE_MAX_WIDTH_PX", "65536"))
+WEBP_QUALITY = int(os.environ.get("TILE_WEBP_QUALITY", "90"))
+# ภาพเส้น: lossless คมกว่า lossy สำหรับ CAD
+WEBP_LOSSLESS = os.environ.get("TILE_WEBP_LOSSLESS", "1") == "1"
 
 _doc = None
 _dl = None
@@ -52,19 +53,18 @@ def render_chunk(task):
     z, cx, cy = task
     cfg = _cfg
     wz, hz = level_dims(cfg, z)
-    scale = cfg["scale"] / 2 ** (cfg["maxZoom"] - z)  # พิกเซลต่อจุด PDF ที่ระดับนี้
+    scale = cfg["scale"] / 2 ** (cfg["maxZoom"] - z)
     px0, py0 = cx * CHUNK_TILES * TILE, cy * CHUNK_TILES * TILE
     cw = min(CHUNK_TILES * TILE, wz - px0)
     ch = min(CHUNK_TILES * TILE, hz - py0)
     if cw <= 0 or ch <= 0:
         return 0
-    # วาดตามพิกัดพิกเซลสากล (global grid) แล้ววางลงผืนผ้าใบขนาด cw x ch → รอยต่อระหว่างชิ้นตรงเป๊ะ
     pad = 1.0 / scale
     area = mu.Rect(px0 / scale - pad, py0 / scale - pad, (px0 + cw) / scale + pad, (py0 + ch) / scale + pad)
     pix = _dl.get_pixmap(matrix=mu.Matrix(scale, scale), clip=area, alpha=False)
     src = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, 3)
     arr = np.full((ch, cw, 3), 255, dtype=np.uint8)
-    ox, oy = pix.x - px0, pix.y - py0  # ตำแหน่งของ pixmap เทียบผืนผ้าใบ
+    ox, oy = pix.x - px0, pix.y - py0
     sx0, sy0 = max(0, -ox), max(0, -oy)
     dx0, dy0 = max(0, ox), max(0, oy)
     wcopy = min(pix.width - sx0, cw - dx0)
@@ -73,7 +73,7 @@ def render_chunk(task):
         arr[dy0 : dy0 + hcopy, dx0 : dx0 + wcopy] = src[sy0 : sy0 + hcopy, sx0 : sx0 + wcopy]
     if arr.min() == 255:
         return 0
-    # ซูมออก: เส้นบางลงจนจาง → เพิ่มความเข้มชดเชย (ไม่แตะระดับละเอียดสุด)
+    # ซูมออก: เส้นบางลงจนจาง → เพิ่มความเข้มชดเชย
     k = min(3.0, 1.35 ** (cfg["maxZoom"] - z))
     if k > 1.01:
         arr = (255 - np.minimum(255.0, (255 - arr.astype(np.float32)) * k)).astype(np.uint8)
@@ -83,7 +83,7 @@ def render_chunk(task):
             t = arr[ty : ty + TILE, tx : tx + TILE]
             if t.min() == 255:
                 continue
-            if t.shape[0] != TILE or t.shape[1] != TILE:  # ขอบผัง: เติมขาวให้ครบ 256
+            if t.shape[0] != TILE or t.shape[1] != TILE:
                 full = np.full((TILE, TILE, 3), 255, dtype=np.uint8)
                 full[: t.shape[0], : t.shape[1]] = t
                 t = full
@@ -91,7 +91,13 @@ def render_chunk(task):
             y = (py0 + ty) // TILE
             d = os.path.join(cfg["out"], "tiles", str(z), str(x))
             os.makedirs(d, exist_ok=True)
-            Image.fromarray(t).save(os.path.join(d, f"{y}.webp"), "WEBP", quality=WEBP_QUALITY, method=4, lossless=WEBP_LOSSLESS)
+            Image.fromarray(t).save(
+                os.path.join(d, f"{y}.webp"),
+                "WEBP",
+                quality=WEBP_QUALITY,
+                method=4,
+                lossless=WEBP_LOSSLESS,
+            )
             n += 1
     return n
 
@@ -111,8 +117,10 @@ def main(pdf_path, texts_path, out_dir):
     w, h = math.ceil(rect.width * scale), math.ceil(rect.height * scale)
     max_zoom = max(0, math.ceil(math.log2(max(w, h) / TILE)))
     cfg = {"w": w, "h": h, "scale": scale, "maxZoom": max_zoom, "out": out_dir}
-    print(f"หน้า PDF {rect.width:.0f}x{rect.height:.0f} pt | ตัวหนังสือเล็ก(p10) {p10:.2f} pt "
-          f"→ ภาพละเอียดสุด {w}x{h} px, ซูม 0..{max_zoom}")
+    print(
+        f"หน้า PDF {rect.width:.0f}x{rect.height:.0f} pt | ตัวหนังสือเล็ก(p10) {p10:.2f} pt "
+        f"→ ภาพละเอียดสุด {w}x{h} px, ซูม 0..{max_zoom}, targetText={TARGET_TEXT_PX}px"
+    )
 
     shutil.rmtree(out_dir, ignore_errors=True)
     os.makedirs(os.path.join(out_dir, "tiles"), exist_ok=True)
@@ -132,14 +140,32 @@ def main(pdf_path, texts_path, out_dir):
             if i % 50 == 0:
                 print(f"  {i}/{len(tasks)} ชิ้นงาน, กระเบื้อง {total}, {time.time() - t0:.0f}s", flush=True)
 
-    # ดัชนีค้นหา: พิกัดเป็นพิกเซลที่ระดับละเอียดสุด (ใช้ตำแหน่งกึ่งกลางความสูงตัวอักษร)
-    # ขยับจากจุดเริ่มข้อความไปราวกึ่งกลางข้อความ (ประมาณจากจำนวนตัวอักษร)
-    idx = [[t, round((x + min(len(t), 30) * fs * 0.28) * scale), round((y - fs * 0.3) * scale)] for t, x, y, fs in items]
+    # ดัชนี: [ข้อความ, x_px, y_px, fs_px] — fs_px ใช้วาดป้ายคมตอนซูมใกล้
+    idx = []
+    for t, x, y, fs in items:
+        if not t:
+            continue
+        x_px = round((x + min(len(t), 30) * fs * 0.28) * scale)
+        y_px = round((y - fs * 0.3) * scale)
+        fs_px = max(1, round(fs * scale))
+        idx.append([t, x_px, y_px, fs_px])
+
     with open(os.path.join(out_dir, "index.json"), "w", encoding="utf-8") as f:
-        json.dump({"v": 1, "items": idx}, f, ensure_ascii=False, separators=(",", ":"))
+        json.dump({"v": 2, "items": idx}, f, ensure_ascii=False, separators=(",", ":"))
     with open(os.path.join(out_dir, "meta.json"), "w", encoding="utf-8") as f:
-        json.dump({"w": w, "h": h, "tile": TILE, "maxZoom": max_zoom, "format": "webp", "tiles": total},
-                  f, ensure_ascii=False)
+        json.dump(
+            {
+                "w": w,
+                "h": h,
+                "tile": TILE,
+                "maxZoom": max_zoom,
+                "format": "webp",
+                "tiles": total,
+                "targetTextPx": TARGET_TEXT_PX,
+            },
+            f,
+            ensure_ascii=False,
+        )
 
     size = sum(os.path.getsize(os.path.join(r, fn)) for r, _, fs_ in os.walk(out_dir) for fn in fs_)
     print(f"เสร็จ: กระเบื้อง {total} ไฟล์, รวม {size / 1048576:.1f} MB, ใช้เวลา {time.time() - t0:.0f}s")
