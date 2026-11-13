@@ -2,13 +2,6 @@
 """PDF (หน้าเดียว) -> กระเบื้องภาพแบบแผนที่ (WebP 256px หลายระดับซูม) + meta.json + index.json
 
 ใช้: make-tiles.py in.pdf texts.json out_dir
-
-ผลลัพธ์ใน out_dir:
-  tiles/{z}/{x}/{y}.webp   z=0 เล็กสุด ... z=maxZoom ละเอียดสุด
-  meta.json
-  index.json               [ข้อความ, x_px, y_px, fs_px] ที่ระดับละเอียดสุด
-
-ความละเอียดสูงสุด: ตัวหนังสือเล็ก (p10) >= TILE_TARGET_TEXT_PX พิกเซล
 """
 import json
 import math
@@ -24,13 +17,14 @@ from PIL import Image
 
 TILE = 256
 CHUNK_TILES = 8
-# เดิม 9 px → ตัวหนังสือยังเล็ก/เบลอตอนซูมใกล้; ดันขึ้นให้คมขึ้น (แลกกับไฟล์ใหญ่ขึ้น)
 TARGET_TEXT_PX = float(os.environ.get("TILE_TARGET_TEXT_PX", "14"))
 MIN_WIDTH_PX = int(os.environ.get("TILE_MIN_WIDTH_PX", "12288"))
 MAX_WIDTH_PX = int(os.environ.get("TILE_MAX_WIDTH_PX", "65536"))
 WEBP_QUALITY = int(os.environ.get("TILE_WEBP_QUALITY", "90"))
-# ภาพเส้น: lossless คมกว่า lossy สำหรับ CAD
 WEBP_LOSSLESS = os.environ.get("TILE_WEBP_LOSSLESS", "1") == "1"
+# เดิม boost แรง → วงกลมกลวง/สัญลักษณ์ SF6 กลายเป็นก้อนทึบตอนซูมออก
+LINE_BOOST_BASE = float(os.environ.get("TILE_LINE_BOOST_BASE", "1.12"))
+LINE_BOOST_MAX = float(os.environ.get("TILE_LINE_BOOST_MAX", "1.85"))
 
 _doc = None
 _dl = None
@@ -73,10 +67,22 @@ def render_chunk(task):
         arr[dy0 : dy0 + hcopy, dx0 : dx0 + wcopy] = src[sy0 : sy0 + hcopy, sx0 : sx0 + wcopy]
     if arr.min() == 255:
         return 0
-    # ซูมออก: เส้นบางลงจนจาง → เพิ่มความเข้มชดเชย
-    k = min(3.0, 1.35 ** (cfg["maxZoom"] - z))
-    if k > 1.01:
-        arr = (255 - np.minimum(255.0, (255 - arr.astype(np.float32)) * k)).astype(np.uint8)
+
+    # ชดเชยเส้นจางตอนซูมออก — เบาลงจากเดิมมาก เพื่อไม่ให้อุปกรณ์กลวงกลายเป็นจุดทึบ
+    levels_out = cfg["maxZoom"] - z
+    if levels_out > 0:
+        k = min(LINE_BOOST_MAX, LINE_BOOST_BASE ** levels_out)
+        if k > 1.01:
+            # ใช้ gamma เบาๆ แทนการคูณตรงๆ ทั้งพิกเซล — ขอบเส้นเข้มขึ้น แต่รูกลวงยังว่าง
+            f = arr.astype(np.float32) / 255.0
+            # ดันเฉพาะพิกเซลที่ใกล้สีเข้ม (เส้น) ไม่ดันทั้งพื้น
+            inv = 1.0 - f
+            boosted = 1.0 - np.minimum(1.0, inv * k)
+            # ผสมกับต้นฉบับ 70/30 เพื่อไม่บวมเกิน
+            mix = 0.65
+            out = (f * (1 - mix) + boosted * mix) * 255.0
+            arr = out.astype(np.uint8)
+
     n = 0
     for ty in range(0, ch, TILE):
         for tx in range(0, cw, TILE):
@@ -140,7 +146,6 @@ def main(pdf_path, texts_path, out_dir):
             if i % 50 == 0:
                 print(f"  {i}/{len(tasks)} ชิ้นงาน, กระเบื้อง {total}, {time.time() - t0:.0f}s", flush=True)
 
-    # ดัชนี: [ข้อความ, x_px, y_px, fs_px] — fs_px ใช้วาดป้ายคมตอนซูมใกล้
     idx = []
     for t, x, y, fs in items:
         if not t:
