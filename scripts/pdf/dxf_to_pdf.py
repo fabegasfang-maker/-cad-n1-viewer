@@ -3,6 +3,9 @@
 
 ใช้: dxf_to_pdf.py in.dxf out.pdf [texts.json]
 """
+import copy
+import dataclasses
+import math
 import os
 import re
 import sys
@@ -11,17 +14,14 @@ import warnings
 warnings.filterwarnings("ignore")
 
 import ezdxf
-from ezdxf import bbox
-from ezdxf.fonts import fonts as ezfonts
-import math
-import copy
-
 import pymupdf as mu
+from ezdxf import bbox
 from ezdxf import colors as ezcolors
-from ezdxf.math import BoundingBox2d, Vec2
 from ezdxf.addons.drawing import Frontend, RenderContext, layout
 from ezdxf.addons.drawing import pymupdf as ezpdf
 from ezdxf.addons.drawing.config import BackgroundPolicy, ColorPolicy, Configuration, TextPolicy
+from ezdxf.fonts import fonts as ezfonts
+from ezdxf.math import BoundingBox2d, Vec2
 
 try:
     from ezdxf.addons.drawing.config import LineweightPolicy
@@ -32,9 +32,21 @@ LONG_SIDE_MM = 1189.0
 MAX_ASPECT = 6.0
 
 _INT = re.compile(rb"^\s*-?\d+\s*$")
+_STR_CODES = {1, 2, 3, 4, 6, 7, 8, 9, *range(300, 310), *range(1000, 1010)}
+
+
+def _is_valid_group_code(line: bytes) -> bool:
+    if not _INT.match(line):
+        return False
+    try:
+        c = int(line.strip())
+        return -5 <= c <= 1071
+    except Exception:
+        return False
 
 
 def sanitize_dxf(src: str, dst: str) -> int:
+    """ซ่อมเฉพาะบรรทัดข้อความที่ขึ้นบรรทัดใหม่ดิบ โดยไม่ทำให้ตัวเลขในข้อความกลายเป็น Group Code"""
     with open(src, "rb") as f:
         lines = f.read().split(b"\n")
     out: list[bytes] = []
@@ -42,23 +54,44 @@ def sanitize_dxf(src: str, dst: str) -> int:
     i = 0
     n = len(lines)
     while i < n:
-        code = lines[i]
-        if not code.strip() and i == n - 1:
+        code_line = lines[i]
+        if not code_line.strip() and i == n - 1:
             break
-        if _INT.match(code) and i + 1 < n:
-            out.append(code)
+        if _is_valid_group_code(code_line) and i + 1 < n:
+            code_num = int(code_line.strip())
+            out.append(code_line)
             out.append(lines[i + 1])
             i += 2
-            while i < n and lines[i].strip() and not _INT.match(lines[i]):
-                out[-1] = out[-1].rstrip(b"\r") + b" " + lines[i].rstrip(b"\r")
-                fixed += 1
-                i += 1
+            if code_num in _STR_CODES:
+                while i < n and lines[i].strip() and not _is_valid_group_code(lines[i]):
+                    out[-1] = out[-1].rstrip(b"\r") + b" " + lines[i].rstrip(b"\r")
+                    fixed += 1
+                    i += 1
         else:
             fixed += 1
             i += 1
     with open(dst, "wb") as f:
         f.write(b"\n".join(out) + b"\n")
     return fixed
+
+
+def load_dxf_document(src: str):
+    """อ่าน DXF มาตรฐานจาก dwgdxf โดยตรงก่อน หากมีข้อผิดพลาดจึงใช้โหมดกู้ไฟล์"""
+    try:
+        return ezdxf.readfile(src)
+    except Exception as e1:
+        print(f"ezdxf.readfile ปกติไม่ผ่าน ({type(e1).__name__}) -> ลอง recover.readfile...")
+        from ezdxf import recover
+        try:
+            doc, _ = recover.readfile(src)
+            return doc
+        except Exception as e2:
+            print(f"recover.readfile ไม่ผ่าน ({type(e2).__name__}) -> ซ่อมบรรทัดข้อความก่อนอ่านใหม่...")
+            fixed_path = src + ".fixed.dxf"
+            n_fixed = sanitize_dxf(src, fixed_path)
+            print(f"ซ่อมโครงสร้าง DXF {n_fixed} จุด")
+            doc, _ = recover.readfile(fixed_path)
+            return doc
 
 
 _UNI = re.compile(r"\\U\+([0-9A-Fa-f]{4})")
@@ -136,7 +169,15 @@ def collect_texts(doc, msp):
     texts = []
     with_text = blocks_with_text(doc)
 
+    def is_layer_visible(layer_name: str) -> bool:
+        if layer_name not in doc.layers:
+            return True
+        lyr = doc.layers.get(layer_name)
+        return lyr.is_on() and not lyr.is_frozen()
+
     def emit(e, parent_aci):
+        if e.dxf.hasattr("layer") and not is_layer_visible(e.dxf.layer):
+            return
         t = e.dxftype()
         try:
             if t == "MTEXT":
@@ -152,6 +193,10 @@ def collect_texts(doc, msp):
 
     def walk(entities, parent_aci, depth):
         for e in entities:
+            if e.dxf.hasattr("invisible") and e.dxf.invisible:
+                continue
+            if e.dxf.hasattr("layer") and not is_layer_visible(e.dxf.layer):
+                continue
             t = e.dxftype()
             if t in ("TEXT", "MTEXT"):
                 emit(e, parent_aci)
@@ -162,7 +207,7 @@ def collect_texts(doc, msp):
                 for a in e.attribs:
                     if not (a.dxf.hasattr("invisible") and a.dxf.invisible):
                         emit(a, aci)
-                if depth < 4 and e.dxf.name in with_text:
+                if depth < 5 and e.dxf.name in with_text:
                     try:
                         walk(list(e.virtual_entities()), aci, depth + 1)
                     except Exception:
@@ -208,9 +253,7 @@ def place_texts(page, m, texts, font_file, index=None) -> int:
             lh = h * LINE_SPACING * spacing
             nl = len(lines)
             if t == "MTEXT":
-                first = {0: -h, 1: -h + (nl - 1) * lh / 2 - 0.0, 2: -h + (nl - 1) * lh}[vpos]
-                if vpos == 1:
-                    first = (nl - 1) * lh / 2 - h / 2
+                first = {0: -h, 1: (nl - 1) * lh / 2 - h / 2, 2: -h + (nl - 1) * lh}[vpos]
             else:
                 first = {3: 0.0, 2: -h / 2, 1: 0.0, 0: -h}[vpos]
             ca, sa = math.cos(ang), math.sin(ang)
@@ -256,13 +299,147 @@ def force_thai_font(doc) -> None:
             pass
 
 
+def normalize_layers(doc) -> None:
+    """เคารพเลเยอร์ที่ถูกปิด/แช่แข็งใน AutoCAD ยกเว้นกรณีบั๊กตัวแปลงปิดทุกเลเยอร์"""
+    total = len(doc.layers)
+    off = [l for l in doc.layers if not l.is_on() or l.is_frozen()]
+    print(f"เลเยอร์ทั้งหมด {total} (ปิด/แช่แข็ง {len(off)}), บล็อก {len(doc.blocks)}")
+    if total > 0 and len(off) >= total:
+        print("ตรวจพบทุกเลเยอร์ถูกตั้งค่าปิด (อาการจาก LibreDWG) -> เปิดแสดงผลทุกเลเยอร์")
+        for layer in doc.layers:
+            try:
+                if layer.dxf.name.upper() != "DEFPOINTS":
+                    layer.on()
+                    layer.thaw()
+            except Exception:
+                pass
+    else:
+        # ปิดเฉพาะ DEFPOINTS ตามมาตรฐาน AutoCAD (ไม่พิมพ์ออกทางพล็อต)
+        for layer in doc.layers:
+            try:
+                if layer.dxf.name.upper() == "DEFPOINTS":
+                    layer.off()
+            except Exception:
+                pass
+
+
+def _is_white_mask_fill(doc, e) -> bool:
+    try:
+        if e.dxf.hasattr("true_color"):
+            r, g, b = ezcolors.int2rgb(e.dxf.true_color)
+            return r > 242 and g > 242 and b > 242
+        aci = abs(int(e.dxf.color)) if e.dxf.hasattr("color") else 256
+        if aci == 256 and e.dxf.hasattr("layer") and e.dxf.layer in doc.layers:
+            lyr = doc.layers.get(e.dxf.layer)
+            if lyr.dxf.hasattr("true_color"):
+                r, g, b = ezcolors.int2rgb(lyr.dxf.true_color)
+                return r > 242 and g > 242 and b > 242
+            aci = abs(int(lyr.color))
+        return aci == 255
+    except Exception:
+        return False
+
+
+def _adjust_stroke_rgb_for_white(r: int, g: int, b: int):
+    # สีเขียวสด ACI 3 (0,255,0) ปรับให้เข้มขึ้นเล็กน้อยเพื่อให้อ่านคมชัดบนพื้นขาว
+    if r < 40 and g > 220 and b < 40:
+        return (0, 180, 0)
+    lum = 0.299 * r + 0.587 * g + 0.114 * b
+    if lum <= 195:
+        return None
+    if r > 220 and g > 220 and b < 60:
+        return (180, 120, 0)
+    if max(r, g, b) - min(r, g, b) < 20:
+        return (85, 85, 85)
+    factor = 145.0 / max(lum, 1.0)
+    return (
+        max(0, min(255, int(round(r * factor)))),
+        max(0, min(255, int(round(g * factor)))),
+        max(0, min(255, int(round(b * factor)))),
+    )
+
+
+def prepare_entities_for_white_bg(doc, msp) -> None:
+    """ลบ WIPEOUT/พื้นขาวที่บังเส้น ปรับสีเส้นที่อ่อนเกินไปบนพื้นขาว และจัด HATCH ไว้ใต้เส้นเสมอ"""
+    stroke_types = {"LINE", "LWPOLYLINE", "POLYLINE", "ARC", "CIRCLE", "ELLIPSE", "SPLINE", "LEADER"}
+    removed = 0
+    darkened = 0
+
+    def process_container(container):
+        nonlocal removed, darkened
+        to_remove = []
+        for e in container:
+            t = e.dxftype()
+            if t == "WIPEOUT":
+                to_remove.append(e)
+                continue
+            if t in ("HATCH", "SOLID", "TRACE") and _is_white_mask_fill(doc, e):
+                to_remove.append(e)
+                continue
+            if t == "MTEXT":
+                try:
+                    if e.dxf.hasattr("bg_fill"):
+                        e.dxf.bg_fill = 0
+                except Exception:
+                    pass
+            if t in stroke_types:
+                try:
+                    rgb = None
+                    if e.dxf.hasattr("true_color"):
+                        rgb = ezcolors.int2rgb(e.dxf.true_color)
+                    else:
+                        aci = abs(int(e.dxf.color)) if e.dxf.hasattr("color") else 256
+                        if aci == 256 and e.dxf.hasattr("layer") and e.dxf.layer in doc.layers:
+                            lyr = doc.layers.get(e.dxf.layer)
+                            if lyr.dxf.hasattr("true_color"):
+                                rgb = ezcolors.int2rgb(lyr.dxf.true_color)
+                            else:
+                                aci = abs(int(lyr.color))
+                        if aci not in (0, 7, 256):
+                            rgb = ezcolors.aci2rgb(aci)
+                    if rgb is not None:
+                        adj = _adjust_stroke_rgb_for_white(*rgb)
+                        if adj is not None:
+                            e.dxf.true_color = ezcolors.rgb2int(adj)
+                            darkened += 1
+                except Exception:
+                    pass
+
+        for e in to_remove:
+            try:
+                container.delete_entity(e)
+                removed += 1
+            except Exception:
+                pass
+
+    process_container(msp)
+    for b in doc.blocks:
+        if b.name.upper().startswith("*PAPER_SPACE"):
+            continue
+        process_container(b)
+
+    # จัดลำดับวาดให้ HATCH / SOLID อยู่ด้านล่างสุดเหมือนโหมด PC (ไม่ให้ทับเส้นไฟ)
+    try:
+        bg_types = {"HATCH", "SOLID", "TRACE"}
+        order = []
+        for idx, ent in enumerate(msp):
+            h = getattr(ent.dxf, "handle", None)
+            if h:
+                pri = 0 if ent.dxftype() in bg_types else 1
+                order.append((h, f"{pri:01x}{idx:07x}"))
+        if order:
+            msp.set_redraw_order(order)
+    except Exception:
+        pass
+
+    if removed or darkened:
+        print(f"ปรับแต่งการแสดงผลบนพื้นขาว: ลบ WIPEOUT/พื้นขาวบังเส้น {removed} ชิ้น, ปรับสีเส้นอ่อนให้เข้มขึ้น {darkened} เส้น")
+
+
 def thin_entity_lineweights(doc) -> int:
-    """ลด lineweight ของ entity / เลเยอร์ ที่ตั้งหนาเกินไปในไฟล์ต้น
-    (ค่า 0 = default ตามเลเยอร์, ติดลบ = default)
-    """
+    """จำกัดเพดาน lineweight ที่หนาเกินไปเพื่อไม่ให้สัญลักษณ์สวิตช์กลวงอุดตัน"""
     n = 0
-    # เพดาน ~0.25 มม. ในหน่วย DXF lineweight (100 = 1.00 มม.)
-    max_lw = int(float(os.environ.get("PDF_ENTITY_MAX_LW", "25")))  # 0.25 mm
+    max_lw = int(float(os.environ.get("PDF_ENTITY_MAX_LW", "30")))  # 0.30 mm
 
     def clamp_lw(e):
         nonlocal n
@@ -296,49 +473,44 @@ def thin_entity_lineweights(doc) -> int:
 
 
 def build_draw_config() -> Configuration:
-    """เส้นบางมาก — สัญลักษณ์ไฟฟ้ากลวงต้องไม่ถูกอุดด้วยเส้นหนา"""
-    min_lw = float(os.environ.get("PDF_MIN_LINEWEIGHT_MM", "0.05"))
+    """ตั้งค่าความหนาเส้นให้สมดุล: เส้น 0-width มองเห็นชัดทุกซูม และสัญลักษณ์กลวงไม่ตัน
+    หมายเหตุ: min_lineweight ของ ezdxf มีหน่วยเป็น 1/300 นิ้ว (1 มม. = 300 / 25.4 ≈ 11.811)
+    """
+    min_lw_mm = float(os.environ.get("PDF_MIN_LINEWEIGHT_MM", "0.09"))
+    min_lw_ez = max(0.45, min_lw_mm * (300.0 / 25.4))
+    lw_scale = float(os.environ.get("PDF_LINEWEIGHT_SCALING", "0.65"))
+
+    valid_fields = (
+        {f.name for f in dataclasses.fields(Configuration)}
+        if dataclasses.is_dataclass(Configuration)
+        else {"background_policy", "color_policy", "text_policy", "min_lineweight", "lineweight_scaling", "lineweight_policy"}
+    )
     kwargs = dict(
         background_policy=BackgroundPolicy.WHITE,
         color_policy=ColorPolicy.COLOR,
         text_policy=TextPolicy.IGNORE,
-        min_lineweight=min_lw,
-        # ผังจริงตั้งความหนาเป็น "ค่าเริ่มต้น" แทบทั้งหมด ซึ่ง ezdxf วาดหนา ~0.35 มม. → สัญลักษณ์ตัน
-        # จึงปิดการสเกลความหนา (0) ให้ทุกเส้นเป็นเส้นบางเท่ากัน (ยืนยันด้วยภาพเทียบจากผังจริง)
-        lineweight_scaling=float(os.environ.get("PDF_LINEWEIGHT_SCALING", "0")),
     )
-    if LineweightPolicy is not None:
+    if "min_lineweight" in valid_fields:
+        kwargs["min_lineweight"] = min_lw_ez
+    if "lineweight_scaling" in valid_fields:
+        kwargs["lineweight_scaling"] = lw_scale
+    if LineweightPolicy is not None and "lineweight_policy" in valid_fields:
         try:
             kwargs["lineweight_policy"] = LineweightPolicy.ABSOLUTE
         except Exception:
             pass
-    try:
-        return Configuration(**kwargs)
-    except TypeError:
-        return Configuration(
-            background_policy=BackgroundPolicy.WHITE,
-            color_policy=ColorPolicy.COLOR,
-            text_policy=TextPolicy.IGNORE,
-            min_lineweight=min_lw,
-        )
+    return Configuration(**kwargs)
 
 
 def main(src: str, dst: str, texts_out: str = "") -> None:
-    fixed_path = src + ".fixed.dxf"
-    n_fixed = sanitize_dxf(src, fixed_path)
-    if n_fixed:
-        print(f"ซ่อมโครงสร้าง DXF {n_fixed} จุด (ข้อความที่มีการขึ้นบรรทัดใหม่)")
-    try:
-        doc = ezdxf.readfile(fixed_path)
-    except Exception as e:
-        print(f"อ่านแบบปกติไม่ได้ ({type(e).__name__}) → ใช้โหมดกู้ไฟล์")
-        from ezdxf import recover
-
-        doc, _auditor = recover.readfile(fixed_path)
-
+    doc = load_dxf_document(src)
     ezfonts.build_system_font_cache()
     force_thai_font(doc)
+    normalize_layers(doc)
+
     msp = doc.modelspace()
+    prepare_entities_for_white_bg(doc, msp)
+
     ext = bbox.extents(msp, fast=True)
     if not ext.has_data:
         raise SystemExit("ไม่พบเส้น/วัตถุในผังหลัก (Model space ว่าง)")
@@ -346,17 +518,8 @@ def main(src: str, dst: str, texts_out: str = "") -> None:
     from collections import Counter
 
     kinds = Counter(e.dxftype() for e in msp)
-    print(f"Model space: {sum(kinds.values())} วัตถุ → " + ", ".join(f"{k}={v}" for k, v in kinds.most_common(10)))
+    print(f"Model space: {sum(kinds.values())} วัตถุ -> " + ", ".join(f"{k}={v}" for k, v in kinds.most_common(10)))
     print(f"Extents: x {ext.extmin.x:.0f}..{ext.extmax.x:.0f}  y {ext.extmin.y:.0f}..{ext.extmax.y:.0f}")
-    off = [l.dxf.name for l in doc.layers if not l.is_on() or l.is_frozen()]
-    print(f"เลเยอร์ทั้งหมด {len(doc.layers)} (ปิด/แช่แข็ง {len(off)}), บล็อก {len(doc.blocks)}")
-
-    for layer in doc.layers:
-        try:
-            layer.on()
-            layer.thaw()
-        except Exception:
-            pass
 
     n_lw = thin_entity_lineweights(doc)
     if n_lw:
@@ -372,9 +535,8 @@ def main(src: str, dst: str, texts_out: str = "") -> None:
 
     cfg = build_draw_config()
     print(
-        f"lineweight: min={getattr(cfg, 'min_lineweight', '?')} mm, "
-        f"scale={getattr(cfg, 'lineweight_scaling', '?')}, "
-        f"max={getattr(cfg, 'max_lineweight', '?')} mm"
+        f"lineweight config: min_ez={getattr(cfg, 'min_lineweight', '?'):.2f} (1/300 in), "
+        f"scale={getattr(cfg, 'lineweight_scaling', '?')}"
     )
     ctx = RenderContext(doc)
     backend = ezpdf.PyMuPdfBackend()
@@ -413,7 +575,7 @@ def main(src: str, dst: str, texts_out: str = "") -> None:
             items.append([t, round(x, 1), round(y, 1), round(fs, 2)])
         with open(texts_out, "w", encoding="utf-8") as f:
             json.dump(items, f, ensure_ascii=False, separators=(",", ":"))
-        print(f"ดัชนีข้อความ: {len(items)} รายการ → {texts_out}")
+        print(f"ดัชนีข้อความ: {len(items)} รายการ -> {texts_out}")
     print(f"ข้อความ: พบ {len(texts)} ชิ้น, ใส่ลง PDF {n_text} บรรทัด")
     pdf = doc_pdf.tobytes(garbage=3, deflate=True)
     doc_pdf.close()
@@ -422,7 +584,10 @@ def main(src: str, dst: str, texts_out: str = "") -> None:
     try:
         with mu.open(dst) as d:
             pg = d[0]
-            print(f"ในหน้า PDF: เส้น/รูปทรง {len(pg.get_drawings())} ชิ้น, ตัวอักษร {len(pg.get_text())} ตัว")
+            drawings = pg.get_drawings()
+            widths = [dr["width"] for dr in drawings if dr.get("width") is not None]
+            w_info = f", stroke pt min={min(widths):.3f} max={max(widths):.3f}" if widths else ""
+            print(f"ในหน้า PDF: เส้น/รูปทรง {len(drawings)} ชิ้น{w_info}, ตัวอักษร {len(pg.get_text())} ตัว")
     except Exception as e:
         print(f"(ตรวจ PDF ไม่ได้: {e})")
     print(f"PDF ok: {dst} ({len(pdf)/1048576:.1f} MB, page {page_w:.0f}x{page_h:.0f} mm)")

@@ -36,7 +36,7 @@
       }
       #map { position: absolute; inset: 0; background: #fff; }
       .leaflet-container { background: #fff; font: inherit; -webkit-tap-highlight-color: transparent; }
-      .leaflet-tile { image-rendering: auto; }
+      .leaflet-tile { image-rendering: auto; color: transparent; }
 
       #bar {
         position: absolute; z-index: 1000; left: 0; right: 0; top: 0;
@@ -197,6 +197,7 @@
 
         function start(meta) {
           var Z = meta.maxZoom, W = meta.w, H = meta.h;
+          var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
           var map = L.map('map', {
             crs: L.CRS.Simple,
             zoomSnap: 0.25,
@@ -215,7 +216,8 @@
           map.setMinZoom(fitZoom - 0.5);
           map.setMaxZoom(Z + 2);
 
-          L.tileLayer('map/tiles/{z}/{x}/{y}.webp', {
+          var versionTag = meta.generatedAt ? encodeURIComponent(meta.generatedAt) : String(meta.generatorVersion || '');
+          var tileLayer = L.tileLayer('map/tiles/{z}/{x}/{y}.webp' + (versionTag ? '?v=' + versionTag : ''), {
             tileSize: meta.tile || 256,
             minNativeZoom: 0,
             maxNativeZoom: Z,
@@ -224,9 +226,27 @@
             noWrap: true,
             bounds: bounds,
             errorTileUrl: BLANK,
-            keepBuffer: 3,
-            updateWhenIdle: false
-          }).addTo(map);
+            keepBuffer: isTouch ? 2 : 3,
+            updateWhenIdle: isTouch,
+            updateWhenZooming: !isTouch
+          });
+
+          tileLayer.on('tileerror', function (ev) {
+            var img = ev && ev.tile;
+            if (!img || !ev.coords) return;
+            var tries = (img._retryCount || 0) + 1;
+            if (tries > 2) return;
+            img._retryCount = tries;
+            var c = ev.coords;
+            var retryUrl = 'map/tiles/' + c.z + '/' + c.x + '/' + c.y + '.webp?r=' + tries + (versionTag ? '&v=' + versionTag : '');
+            setTimeout(function () {
+              if (img.parentNode) {
+                img.src = retryUrl;
+              }
+            }, tries * 450);
+          });
+
+          tileLayer.addTo(map);
 
           L.control.zoom({ position: 'bottomright', zoomInText: '+', zoomOutText: '−' }).addTo(map);
           map.fitBounds(bounds, { animate: false });
@@ -352,7 +372,6 @@
             if (!labelsOn || !items || !items.length) return;
 
             var z = map.getZoom();
-            // ต้องซูมใกล้พอ ไม่งั้นป้ายทับกันทั้งจอ
             if (z < Z - 1.5) return;
 
             var b = map.getBounds();
@@ -366,7 +385,6 @@
             var minFs = z >= Z ? 7 : 11;
             var maxLabels = z >= Z ? 220 : 100;
             var scale = Math.pow(2, Math.max(0, z - Z));
-            // ตอนยังไม่ overzoom ใช้ขนาดใกล้เคียงตัวอักษรในผัง
             if (z <= Z) scale = Math.max(0.55, Math.pow(2, z - Z));
             var shown = 0;
 

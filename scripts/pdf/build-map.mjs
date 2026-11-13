@@ -1,6 +1,5 @@
 /**
- * Restore pre-AB map pipeline (logic = gen v7 / commit dd4bca2).
- * GENERATOR_VERSION=10 forces tile rebuild after A/B experiments.
+ * สร้างกระเบื้องแผนที่ (public/map) จากไฟล์ DWG ล่าสุดบน Google Drive
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -18,7 +17,8 @@ const FOLDER_MIME = 'application/vnd.google-apps.folder';
 const KEY = process.env.GOOGLE_API_KEY || '';
 const FOLDER_ID = process.env.DRIVE_FOLDER_ID || '1mP47qarQZxPF-ln5Dy7VZrJlcq0uPJ4D';
 const SITE_URL = (process.env.SITE_URL || '').replace(/\/$/, '');
-const GENERATOR_VERSION = 11;
+// v8: ใช้ dwgdxf + แก้หน่วย min_lineweight + 2x supersample tiles + ลบ wipeout บังเส้น
+const GENERATOR_VERSION = 8;
 const MOBILE_NAME = /mobile|mob\b|phone|เล็ก|มือถือ|_mobile/i;
 
 const THAI_MONTHS = {
@@ -69,17 +69,26 @@ async function resolveLatest() {
   if (meta.mimeType !== FOLDER_MIME) return meta;
   const children = await listChildren(FOLDER_ID);
   const folders = children.filter((f) => f.mimeType === FOLDER_MIME);
+  console.log(`--- โฟลเดอร์ย่อยใน Drive (${folders.length}) ---`);
+  for (const f of [...folders].sort((a, b) => monthKey(b.name) - monthKey(a.name) || ts(b) - ts(a)).slice(0, 8)) {
+    console.log(`  [key=${monthKey(f.name)}] ${f.name}  (แก้ไข ${f.modifiedTime})`);
+  }
   const months = folders.filter((f) => monthKey(f.name) > 0).sort((a, b) => monthKey(b.name) - monthKey(a.name) || ts(b) - ts(a));
   const tryFolders = months.length ? months : folders.sort((a, b) => monthKey(b.name) - monthKey(a.name));
   let fromMonth = null;
   for (const f of tryFolders) {
     const inner = await listChildren(f.id);
+    console.log(`--- ในโฟลเดอร์ "${f.name}" ---`);
+    for (const x of inner.filter((y) => /\.(dwg|dxf)$/i.test(y.name || '')).slice(0, 25)) {
+      console.log(`  ${x.name}  (${(Number(x.size || 0) / 1048576).toFixed(1)} MB, แก้ไข ${x.modifiedTime})`);
+    }
     const pick = pickDwg(inner);
     if (pick) { fromMonth = pick; break; }
   }
   const fromRoot = pickDwg(children);
+  console.log(`--- ไฟล์ .dwg ที่ราก: ${fromRoot ? `${fromRoot.name} (แก้ไข ${fromRoot.modifiedTime})` : 'ไม่มี'}`);
   const best = fromMonth && fromRoot ? (ts(fromRoot) > ts(fromMonth) ? fromRoot : fromMonth) : fromMonth || fromRoot;
-  if (!best) throw new Error('ไม่พบไฟล์ .dwg');
+  if (!best) throw new Error('ไม่พบไฟล์ .dwg ในโฟลเดอร์ Drive');
   return best;
 }
 
@@ -97,15 +106,17 @@ function setOutput(name, value) {
 
 async function main() {
   setOutput('map_changed', 'false');
-  if (!KEY) { console.log('::warning::ไม่มี GOOGLE_API_KEY'); return; }
+  if (!KEY) { console.log('::warning::ไม่มี GOOGLE_API_KEY → ข้ามการสร้างแผนที่'); return; }
 
   const prev = readPrevMeta();
+  if (prev) console.log(`พบกระเบื้องเดิม: ${prev.sourceName} (${prev.sourceModified}, ${prev.tiles} ไฟล์, gen=${prev.generatorVersion})`);
+
   const latest = await resolveLatest();
-  console.log(`ล่าสุด: ${latest.name} gen=${GENERATOR_VERSION}`);
+  console.log(`ไฟล์ล่าสุดบน Drive: ${latest.name} (${latest.modifiedTime}, ${(Number(latest.size || 0) / 1048576).toFixed(1)} MB)`);
 
   if (!process.env.FORCE_MAP && prev && prev.generatorVersion === GENERATOR_VERSION
       && prev.sourceId === latest.id && prev.sourceModified === latest.modifiedTime) {
-    console.log('ไม่เปลี่ยน');
+    console.log('ไฟล์ยังไม่เปลี่ยน → ใช้กระเบื้องเดิม');
     return;
   }
 
@@ -116,29 +127,26 @@ async function main() {
   const texts = path.join(tmp, 'texts.json');
   const outMap = path.join(tmp, 'map');
 
+  console.log('ดาวน์โหลด DWG...');
   const res = await fetch(`${API}/${latest.id}?alt=media&supportsAllDrives=true&key=${encodeURIComponent(KEY)}`, { headers: HEADERS });
-  if (!res.ok) throw new Error(`download HTTP ${res.status}`);
+  if (!res.ok) throw new Error(`ดาวน์โหลด DWG ไม่สำเร็จ (HTTP ${res.status})`);
   fs.writeFileSync(dwg, Buffer.from(await res.arrayBuffer()));
 
+  console.log('DWG → DXF...');
   await dwgToDxf(dwg, dxf);
 
-  if (process.env.DIAG_DIR) {
-    // โหมดวินิจฉัย: เรนเดอร์ภาพบริเวณหนึ่งด้วยค่าความหนาเส้นหลายแบบ แล้วจบ (ไม่แตะกระเบื้องจริง)
-    console.log('วินิจฉัย: เรนเดอร์ภาพเทียบค่าความหนาเส้น...');
-    execFileSync('python3', [path.join(HERE, 'diag.py'), dxf, process.env.DIAG_DIR], { stdio: 'inherit' });
-    return;
-  }
-
+  console.log('DXF → PDF (gen8 เส้นคมชัดครบทุกเลเยอร์)...');
   execFileSync('python3', [path.join(HERE, 'dxf_to_pdf.py'), dxf, pdf, texts], {
     stdio: 'inherit',
     env: {
       ...process.env,
-      PDF_MIN_LINEWEIGHT_MM: process.env.PDF_MIN_LINEWEIGHT_MM || '0.05',
-      PDF_LINEWEIGHT_SCALING: process.env.PDF_LINEWEIGHT_SCALING || '0',
-      PDF_ENTITY_MAX_LW: process.env.PDF_ENTITY_MAX_LW || '25',
+      PDF_MIN_LINEWEIGHT_MM: process.env.PDF_MIN_LINEWEIGHT_MM || '0.09',
+      PDF_LINEWEIGHT_SCALING: process.env.PDF_LINEWEIGHT_SCALING || '0.65',
+      PDF_ENTITY_MAX_LW: process.env.PDF_ENTITY_MAX_LW || '30',
     },
   });
 
+  console.log('PDF → กระเบื้องแผนที่...');
   execFileSync('python3', [path.join(HERE, 'make-tiles.py'), pdf, texts, outMap], {
     stdio: 'inherit',
     env: {
@@ -146,8 +154,8 @@ async function main() {
       TILE_TARGET_TEXT_PX: process.env.TILE_TARGET_TEXT_PX || '14',
       TILE_MAX_WIDTH_PX: process.env.TILE_MAX_WIDTH_PX || '65536',
       TILE_WEBP_LOSSLESS: process.env.TILE_WEBP_LOSSLESS || '1',
-      TILE_LINE_BOOST_BASE: process.env.TILE_LINE_BOOST_BASE || '1.12',
-      TILE_LINE_BOOST_MAX: process.env.TILE_LINE_BOOST_MAX || '1.85',
+      TILE_LINE_BOOST_BASE: process.env.TILE_LINE_BOOST_BASE || '1.25',
+      TILE_LINE_BOOST_MAX: process.env.TILE_LINE_BOOST_MAX || '2.35',
     },
   });
 
@@ -166,7 +174,9 @@ async function main() {
   fs.cpSync(outMap, MAP_DIR, { recursive: true });
   fs.rmSync(tmp, { recursive: true, force: true });
   setOutput('map_changed', 'true');
-  console.log(`ok tiles=${meta.tiles} gen=${GENERATOR_VERSION}`);
+  console.log(`สร้างแผนที่เรียบร้อย: ${meta.tiles} กระเบื้อง, ซูม 0..${meta.maxZoom}, gen=${GENERATOR_VERSION}`);
 }
 
-main().catch((e) => console.log(`::warning::${e.message}`));
+main().catch((e) => {
+  console.log(`::warning::สร้างแผนที่ไม่สำเร็จ: ${e.message}`);
+});
