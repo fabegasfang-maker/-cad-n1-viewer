@@ -89,6 +89,10 @@ def summarize(ents, doc, title):
             widths[round(w, 2)] += 1
     if widths:
         print("LWPOLYLINE ความกว้าง (หน่วยผัง):", dict(widths.most_common(10)))
+    print("linetype:", dict(Counter(e.dxf.get("linetype", "BYLAYER") for e in ents).most_common(8)))
+    print("ltscale ต่อวัตถุ:", dict(Counter(round(e.dxf.get("ltscale", 1.0), 3) for e in ents).most_common(6)))
+    print("สี (ACI/true):", dict(Counter((e.dxf.get("color", 256), e.dxf.get("true_color")) for e in ents).most_common(10)))
+    print("layer:", dict(Counter(e.dxf.layer for e in ents).most_common(12)))
     inserts = Counter(e.dxf.name for e in ents if e.dxftype() == "INSERT")
     for name, n in inserts.most_common(8):
         try:
@@ -193,6 +197,12 @@ def main(src, out_dir):
     print("ezdxf", ezdxf.__version__, "| Configuration:", [f.name for f in dataclasses.fields(Configuration)])
     print("DXF $LWDISPLAY/$PDMODE/$PDSIZE:", doc.header.get("$LWDISPLAY"), doc.header.get("$PDMODE"), doc.header.get("$PDSIZE"))
     print("linetypes:", [lt.dxf.name for lt in doc.linetypes][:30])
+    print("header LTSCALE/MSLTSCALE/CELTSCALE:", doc.header.get("$LTSCALE"), doc.header.get("$MSLTSCALE"), doc.header.get("$CELTSCALE"))
+    for lt in doc.linetypes:
+        try:
+            print("  pattern", lt.dxf.name, list(lt.pattern_tags.tags)[:0] or lt.dxf.get("description"), lt.pattern_tags.get_style_handle() if False else "")
+        except Exception:
+            pass
     print("layers:", [(l.dxf.name, l.dxf.get("lineweight"), l.dxf.get("linetype")) for l in doc.layers])
 
     # ชนิดวัตถุที่ ezdxf วาดไม่ได้ (อาจเป็นสาเหตุเส้น/สัญลักษณ์หาย) ทั้ง Model space และบล็อก
@@ -264,6 +274,16 @@ def main(src, out_dir):
         variants.append(("E_relative", cfg_of(lineweight_policy=LineweightPolicy.RELATIVE)))
     except Exception as ex:
         print("ไม่มี LineweightPolicy:", ex)
+    try:
+        from ezdxf.addons.drawing.config import LinePolicy
+
+        variants += [
+            ("L_hair_solid", cfg_of(lineweight_scaling=0.0, line_policy=LinePolicy.SOLID)),
+            ("M_hair_approx", cfg_of(lineweight_scaling=0.0, line_policy=LinePolicy.APPROXIMATE)),
+            ("N_hair_accurate", cfg_of(lineweight_scaling=0.0, line_policy=LinePolicy.ACCURATE)),
+        ]
+    except Exception as ex:
+        print("ไม่มี LinePolicy:", ex)
     for name, cfg in variants:
         print("เรนเดอร์", name)
         try:

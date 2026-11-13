@@ -2,6 +2,17 @@ name: Diagnose map rendering
 
 on:
   workflow_dispatch:
+    inputs:
+      key:
+        description: 'ข้อความอ้างอิงจุดกึ่งกลาง'
+        default: 'CMD04VS-120'
+      near:
+        description: 'ข้อความที่อยู่ใกล้ (ถ้ามี)'
+        default: ''
+      w:
+        default: '700'
+      h:
+        default: '440'
 
 permissions:
   contents: write
@@ -22,6 +33,10 @@ jobs:
           DRIVE_FOLDER_ID: ${{ vars.DRIVE_FOLDER_ID }}
           SITE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
           FORCE_MAP: '1'
+          DIAG_KEY: ${{ inputs.key }}
+          DIAG_NEAR: ${{ inputs.near }}
+          DIAG_W: ${{ inputs.w }}
+          DIAG_H: ${{ inputs.h }}
           DIAG_DIR: ${{ github.workspace }}/diag-out
           DIAG_KEY: RMU
           DIAG_NEAR: zzzz
