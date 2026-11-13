@@ -26,6 +26,8 @@ const FOLDER_MIME = 'application/vnd.google-apps.folder';
 const KEY = process.env.GOOGLE_API_KEY || '';
 const FOLDER_ID = process.env.DRIVE_FOLDER_ID || '1mP47qarQZxPF-ln5Dy7VZrJlcq0uPJ4D';
 const SITE_URL = (process.env.SITE_URL || '').replace(/\/$/, '');
+// เพิ่มเลขนี้ทุกครั้งที่สูตรแปลง PDF เปลี่ยน เพื่อให้สร้างใหม่แม้ไฟล์ใน Drive ไม่เปลี่ยน
+const GENERATOR_VERSION = 3;
 const MOBILE_NAME = /mobile|mob\b|phone|เล็ก|มือถือ|_mobile/i;
 
 const THAI_MONTHS = {
@@ -132,7 +134,7 @@ async function main() {
   const latest = await resolveLatest();
   console.log(`ไฟล์ล่าสุดบน Drive: ${latest.name} (${latest.modifiedTime}, ${(Number(latest.size || 0) / 1048576).toFixed(1)} MB)`);
 
-  if (!process.env.FORCE_PDF && prev && prev.meta.sourceId === latest.id && prev.meta.sourceModified === latest.modifiedTime) {
+  if (!process.env.FORCE_PDF && prev && prev.meta.generatorVersion === GENERATOR_VERSION && prev.meta.sourceId === latest.id && prev.meta.sourceModified === latest.modifiedTime) {
     console.log('ไฟล์ยังไม่เปลี่ยน → ใช้ PDF เดิม');
     return;
   }
@@ -158,6 +160,7 @@ async function main() {
     sourceId: latest.id,
     sourceName: latest.name,
     sourceModified: latest.modifiedTime,
+    generatorVersion: GENERATOR_VERSION,
     generatedAt: new Date().toISOString(),
     pdfBytes: fs.statSync(PDF_PATH).size,
   }, null, 2));
