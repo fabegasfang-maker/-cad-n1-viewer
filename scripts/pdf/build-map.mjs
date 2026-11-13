@@ -135,6 +135,13 @@ async function main() {
   console.log('DWG → DXF...');
   await dwgToDxf(dwg, dxf);
 
+  if (process.env.DIAG_DIR) {
+    // โหมดวินิจฉัย: เรนเดอร์ภาพบริเวณหนึ่งเทียบการตั้งค่า แล้วจบ (ไม่แตะกระเบื้องจริง)
+    console.log('วินิจฉัย: เรนเดอร์ภาพเทียบ...');
+    execFileSync('python3', [path.join(HERE, 'diag.py'), dxf, process.env.DIAG_DIR], { stdio: 'inherit' });
+    return;
+  }
+
   console.log('DXF → PDF (gen12 เส้นคมชัดครบทุกเลเยอร์)...');
   execFileSync('python3', [path.join(HERE, 'dxf_to_pdf.py'), dxf, pdf, texts], {
     stdio: 'inherit',
