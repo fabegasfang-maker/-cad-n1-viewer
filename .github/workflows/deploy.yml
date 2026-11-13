@@ -34,7 +34,7 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y -q fonts-thai-tlwg-ttf
-          python3 -m pip install --break-system-packages -q ezdxf pymupdf
+          python3 -m pip install --break-system-packages -q ezdxf pymupdf pillow
       - name: Build latest.pdf from newest DWG on Drive
         # พังก็ไม่ทำให้ deploy ล้ม: สคริปต์จะคง PDF เดิมไว้
         continue-on-error: true

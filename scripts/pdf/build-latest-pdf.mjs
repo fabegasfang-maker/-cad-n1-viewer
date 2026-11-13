@@ -89,7 +89,9 @@ async function resolveLatest() {
   for (const f of tryFolders) {
     const inner = await listChildren(f.id);
     console.log(`--- ในโฟลเดอร์ "${f.name}" ---`);
-    for (const x of inner.slice(0, 8)) console.log(`  ${x.name}  (${x.mimeType === FOLDER_MIME ? 'โฟลเดอร์' : 'ไฟล์'}, แก้ไข ${x.modifiedTime})`);
+    for (const x of inner.filter((y) => /\.(dwg|dxf)$/i.test(y.name || '')).slice(0, 25)) {
+      console.log(`  ${x.name}  (${(Number(x.size || 0) / 1048576).toFixed(1)} MB, แก้ไข ${x.modifiedTime})`);
+    }
     const pick = pickDwg(inner);
     if (pick) { fromMonth = pick; break; }
   }
