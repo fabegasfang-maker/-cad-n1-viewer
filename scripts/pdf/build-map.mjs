@@ -1,4 +1,7 @@
-/** สร้างกระเบื้องแผนที่จาก DWG ล่าสุด — generator v9 */
+/**
+ * Restore pre-AB map pipeline (logic = gen v7 / commit dd4bca2).
+ * GENERATOR_VERSION=10 forces tile rebuild after A/B experiments.
+ */
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -15,7 +18,7 @@ const FOLDER_MIME = 'application/vnd.google-apps.folder';
 const KEY = process.env.GOOGLE_API_KEY || '';
 const FOLDER_ID = process.env.DRIVE_FOLDER_ID || '1mP47qarQZxPF-ln5Dy7VZrJlcq0uPJ4D';
 const SITE_URL = (process.env.SITE_URL || '').replace(/\/$/, '');
-const GENERATOR_VERSION = 9;
+const GENERATOR_VERSION = 10;
 const MOBILE_NAME = /mobile|mob\b|phone|เล็ก|มือถือ|_mobile/i;
 
 const THAI_MONTHS = {
@@ -98,7 +101,7 @@ async function main() {
 
   const prev = readPrevMeta();
   const latest = await resolveLatest();
-  console.log(`ล่าสุด: ${latest.name} (${latest.modifiedTime}) gen=${GENERATOR_VERSION}`);
+  console.log(`ล่าสุด: ${latest.name} gen=${GENERATOR_VERSION}`);
 
   if (!process.env.FORCE_MAP && prev && prev.generatorVersion === GENERATOR_VERSION
       && prev.sourceId === latest.id && prev.sourceModified === latest.modifiedTime) {
@@ -123,12 +126,10 @@ async function main() {
     stdio: 'inherit',
     env: {
       ...process.env,
-      PDF_MIN_LINEWEIGHT_MM: '0.005',
-      PDF_LINEWEIGHT_SCALING: '0.25',
-      PDF_MAX_LINEWEIGHT_MM: '0.18',
-      PDF_ENTITY_MAX_LW: '18',
-      PDF_SYMBOL_MAX_FRAC: '0.02',
-      PDF_HATCH_MAX_FRAC: '0.03',
+      PDF_MIN_LINEWEIGHT_MM: process.env.PDF_MIN_LINEWEIGHT_MM || '0.01',
+      PDF_LINEWEIGHT_SCALING: process.env.PDF_LINEWEIGHT_SCALING || '0.35',
+      PDF_MAX_LINEWEIGHT_MM: process.env.PDF_MAX_LINEWEIGHT_MM || '0.25',
+      PDF_ENTITY_MAX_LW: process.env.PDF_ENTITY_MAX_LW || '25',
     },
   });
 
@@ -136,11 +137,11 @@ async function main() {
     stdio: 'inherit',
     env: {
       ...process.env,
-      TILE_TARGET_TEXT_PX: '14',
-      TILE_MAX_WIDTH_PX: '65536',
-      TILE_WEBP_LOSSLESS: '1',
-      TILE_LINE_BOOST_BASE: '1.0',
-      TILE_LINE_BOOST_MAX: '1.0',
+      TILE_TARGET_TEXT_PX: process.env.TILE_TARGET_TEXT_PX || '14',
+      TILE_MAX_WIDTH_PX: process.env.TILE_MAX_WIDTH_PX || '65536',
+      TILE_WEBP_LOSSLESS: process.env.TILE_WEBP_LOSSLESS || '1',
+      TILE_LINE_BOOST_BASE: process.env.TILE_LINE_BOOST_BASE || '1.12',
+      TILE_LINE_BOOST_MAX: process.env.TILE_LINE_BOOST_MAX || '1.85',
     },
   });
 
