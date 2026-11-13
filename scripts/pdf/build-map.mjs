@@ -18,7 +18,7 @@ const KEY = process.env.GOOGLE_API_KEY || '';
 const FOLDER_ID = process.env.DRIVE_FOLDER_ID || '1mP47qarQZxPF-ln5Dy7VZrJlcq0uPJ4D';
 const SITE_URL = (process.env.SITE_URL || '').replace(/\/$/, '');
 // v8: ใช้ dwgdxf + แก้หน่วย min_lineweight + 2x supersample tiles + ลบ wipeout บังเส้น
-const GENERATOR_VERSION = 8;
+const GENERATOR_VERSION = 12;
 const MOBILE_NAME = /mobile|mob\b|phone|เล็ก|มือถือ|_mobile/i;
 
 const THAI_MONTHS = {
@@ -135,7 +135,7 @@ async function main() {
   console.log('DWG → DXF...');
   await dwgToDxf(dwg, dxf);
 
-  console.log('DXF → PDF (gen8 เส้นคมชัดครบทุกเลเยอร์)...');
+  console.log('DXF → PDF (gen12 เส้นคมชัดครบทุกเลเยอร์)...');
   execFileSync('python3', [path.join(HERE, 'dxf_to_pdf.py'), dxf, pdf, texts], {
     stdio: 'inherit',
     env: {
