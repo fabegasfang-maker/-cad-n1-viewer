@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""PDF (หน้าเดียว) -> กระเบื้องภาพแบบแผนที่ (WebP 256px หลายระดับซูม) + meta.json + index.json
+"""PDF -> กระเบื้อง WebP + meta + index
 
-ใช้: make-tiles.py in.pdf texts.json out_dir
+v9: ปิดการดันความเข้มเส้นเกือบหมด — การ boost เดิมทำให้เส้นบวมเป็นก้อน
 """
 import json
 import math
@@ -22,9 +22,9 @@ MIN_WIDTH_PX = int(os.environ.get("TILE_MIN_WIDTH_PX", "12288"))
 MAX_WIDTH_PX = int(os.environ.get("TILE_MAX_WIDTH_PX", "65536"))
 WEBP_QUALITY = int(os.environ.get("TILE_WEBP_QUALITY", "90"))
 WEBP_LOSSLESS = os.environ.get("TILE_WEBP_LOSSLESS", "1") == "1"
-# เดิม boost แรง → วงกลมกลวง/สัญลักษณ์ SF6 กลายเป็นก้อนทึบตอนซูมออก
-LINE_BOOST_BASE = float(os.environ.get("TILE_LINE_BOOST_BASE", "1.12"))
-LINE_BOOST_MAX = float(os.environ.get("TILE_LINE_BOOST_MAX", "1.85"))
+# ปิด boost เป็นค่าเริ่มต้น (1.0 = ไม่ดัน) — ของเดิมทำให้เส้นหนาขึ้นมาก
+LINE_BOOST_BASE = float(os.environ.get("TILE_LINE_BOOST_BASE", "1.0"))
+LINE_BOOST_MAX = float(os.environ.get("TILE_LINE_BOOST_MAX", "1.0"))
 
 _doc = None
 _dl = None
@@ -68,20 +68,15 @@ def render_chunk(task):
     if arr.min() == 255:
         return 0
 
-    # ชดเชยเส้นจางตอนซูมออก — เบาลงจากเดิมมาก เพื่อไม่ให้อุปกรณ์กลวงกลายเป็นจุดทึบ
     levels_out = cfg["maxZoom"] - z
-    if levels_out > 0:
+    if levels_out > 0 and LINE_BOOST_BASE > 1.001:
         k = min(LINE_BOOST_MAX, LINE_BOOST_BASE ** levels_out)
         if k > 1.01:
-            # ใช้ gamma เบาๆ แทนการคูณตรงๆ ทั้งพิกเซล — ขอบเส้นเข้มขึ้น แต่รูกลวงยังว่าง
             f = arr.astype(np.float32) / 255.0
-            # ดันเฉพาะพิกเซลที่ใกล้สีเข้ม (เส้น) ไม่ดันทั้งพื้น
             inv = 1.0 - f
             boosted = 1.0 - np.minimum(1.0, inv * k)
-            # ผสมกับต้นฉบับ 70/30 เพื่อไม่บวมเกิน
-            mix = 0.65
-            out = (f * (1 - mix) + boosted * mix) * 255.0
-            arr = out.astype(np.uint8)
+            mix = 0.4
+            arr = ((f * (1 - mix) + boosted * mix) * 255.0).astype(np.uint8)
 
     n = 0
     for ty in range(0, ch, TILE):
@@ -124,8 +119,7 @@ def main(pdf_path, texts_path, out_dir):
     max_zoom = max(0, math.ceil(math.log2(max(w, h) / TILE)))
     cfg = {"w": w, "h": h, "scale": scale, "maxZoom": max_zoom, "out": out_dir}
     print(
-        f"หน้า PDF {rect.width:.0f}x{rect.height:.0f} pt | ตัวหนังสือเล็ก(p10) {p10:.2f} pt "
-        f"→ ภาพละเอียดสุด {w}x{h} px, ซูม 0..{max_zoom}, targetText={TARGET_TEXT_PX}px"
+        f"PDF {rect.width:.0f}x{rect.height:.0f} | text p10={p10:.2f} → {w}x{h} px zoom 0..{max_zoom}"
     )
 
     shutil.rmtree(out_dir, ignore_errors=True)
@@ -138,13 +132,13 @@ def main(pdf_path, texts_path, out_dir):
             for cx in range(math.ceil(wz / (CHUNK_TILES * TILE))):
                 tasks.append((z, cx, cy))
     procs = max(1, os.cpu_count() or 1)
-    print(f"เรนเดอร์ {len(tasks)} ชิ้นงาน ด้วย {procs} โปรเซส")
+    print(f"render {len(tasks)} chunks x {procs} procs")
     total = 0
     with Pool(procs, initializer=_init, initargs=(pdf_path, cfg)) as pool:
         for i, n in enumerate(pool.imap_unordered(render_chunk, tasks, chunksize=1), 1):
             total += n
             if i % 50 == 0:
-                print(f"  {i}/{len(tasks)} ชิ้นงาน, กระเบื้อง {total}, {time.time() - t0:.0f}s", flush=True)
+                print(f"  {i}/{len(tasks)} tiles={total} {time.time() - t0:.0f}s", flush=True)
 
     idx = []
     for t, x, y, fs in items:
@@ -159,21 +153,13 @@ def main(pdf_path, texts_path, out_dir):
         json.dump({"v": 2, "items": idx}, f, ensure_ascii=False, separators=(",", ":"))
     with open(os.path.join(out_dir, "meta.json"), "w", encoding="utf-8") as f:
         json.dump(
-            {
-                "w": w,
-                "h": h,
-                "tile": TILE,
-                "maxZoom": max_zoom,
-                "format": "webp",
-                "tiles": total,
-                "targetTextPx": TARGET_TEXT_PX,
-            },
+            {"w": w, "h": h, "tile": TILE, "maxZoom": max_zoom, "format": "webp", "tiles": total, "targetTextPx": TARGET_TEXT_PX},
             f,
             ensure_ascii=False,
         )
 
     size = sum(os.path.getsize(os.path.join(r, fn)) for r, _, fs_ in os.walk(out_dir) for fn in fs_)
-    print(f"เสร็จ: กระเบื้อง {total} ไฟล์, รวม {size / 1048576:.1f} MB, ใช้เวลา {time.time() - t0:.0f}s")
+    print(f"done: {total} tiles, {size/1048576:.1f} MB, {time.time()-t0:.0f}s")
 
 
 if __name__ == "__main__":

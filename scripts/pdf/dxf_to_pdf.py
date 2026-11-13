@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
-"""DXF -> PDF แบบเวกเตอร์ ทั้งแผนผังในหน้าเดียว (ขนาด A0) ใช้เป็นต้นทางสร้างกระเบื้องแผนที่
+"""DXF -> PDF แบบเวกเตอร์ ทั้งแผนผังในหน้าเดียว (ขนาด A0)
 
-ใช้: dxf_to_pdf.py in.dxf out.pdf [texts.json]
-
-Phase A/B: วิเคราะห์ชนิดวัตถุ + ลดสัญลักษณ์ที่เป็นก้อนทึบ
-  - ตัดความกว้าง polyline/lwpolyline
-  - ลบ HATCH solid / SOLID ขนาดเล็ก (สัญลักษณ์อุปกรณ์)
-  - คง HATCH ใหญ่ (พื้นที่สถานี ฯลฯ)
+Phase A/B v9:
+  - ตัดความกว้าง polyline ให้เป็น 0 เสมอ (สายป้อนไม่บวม)
+  - HATCH solid ขนาดเล็ก → แปลงเป็นเส้นขอบ (outline) แทนการลบหรือทึบ
+  - เส้นบางลง (min/scale/max)
 """
 import os
 import re
@@ -263,7 +261,7 @@ def force_thai_font(doc) -> None:
 
 def thin_entity_lineweights(doc) -> int:
     n = 0
-    max_lw = int(float(os.environ.get("PDF_ENTITY_MAX_LW", "25")))
+    max_lw = int(float(os.environ.get("PDF_ENTITY_MAX_LW", "18")))  # 0.18 mm
 
     def clamp_lw(e):
         nonlocal n
@@ -296,13 +294,7 @@ def thin_entity_lineweights(doc) -> int:
     return n
 
 
-# ---------------------------------------------------------------------------
-# Phase A — วิเคราะห์
-# Phase B — ลดก้อนทึบของสัญลักษณ์ไฟฟ้า
-# ---------------------------------------------------------------------------
-
 def _entity_span(e) -> float:
-    """ประมาณขนาดเส้นทแยงของ entity (หน่วย DXF) — ใช้แยกรูปเล็ก/ใหญ่"""
     try:
         bb = bbox.extents([e], fast=True)
         if bb.has_data:
@@ -311,32 +303,18 @@ def _entity_span(e) -> float:
         pass
     try:
         t = e.dxftype()
-        if t == "CIRCLE":
+        if t in ("CIRCLE", "ARC"):
             return float(e.dxf.radius) * 2
-        if t == "ARC":
-            return float(e.dxf.radius) * 2
-        if t in ("LWPOLYLINE", "POLYLINE"):
-            pts = list(e.get_points("xy")) if t == "LWPOLYLINE" else []
-            if pts:
-                xs = [p[0] for p in pts]
-                ys = [p[1] for p in pts]
-                return max(max(xs) - min(xs), max(ys) - min(ys))
     except Exception:
         pass
     return 0.0
 
 
-def analyze_symbol_entities(doc) -> dict:
-    """Phase A: นับชนิดที่เกี่ยวข้องกับสัญลักษณ์ที่มักกลายเป็นก้อนกลม"""
+def analyze_symbol_entities(doc) -> None:
     from collections import Counter
 
     stats = Counter()
-    hatch_solid = 0
-    hatch_other = 0
-    pline_wide = 0
-    circle_n = 0
-    solid_n = 0
-    insert_n = 0
+    hatch_solid = hatch_other = pline_wide = circle_n = solid_n = insert_n = 0
 
     def look(e):
         nonlocal hatch_solid, hatch_other, pline_wide, circle_n, solid_n, insert_n
@@ -357,20 +335,14 @@ def analyze_symbol_entities(doc) -> dict:
                 insert_n += 1
             elif t == "LWPOLYLINE":
                 w = float(e.dxf.const_width) if e.dxf.hasattr("const_width") else 0.0
-                if w > 1e-6:
+                if w > 1e-9:
                     pline_wide += 1
-                else:
-                    # ความกว้างรายจุด
-                    try:
-                        for p in e.get_points("xywb"):
-                            if len(p) >= 4 and (abs(p[2]) > 1e-6 or abs(p[3]) > 1e-6):
-                                pline_wide += 1
-                                break
-                    except Exception:
-                        pass
             elif t == "POLYLINE":
                 try:
-                    if any(abs(float(v.dxf.start_width)) > 1e-6 or abs(float(v.dxf.end_width)) > 1e-6 for v in e.vertices):
+                    if any(
+                        abs(float(v.dxf.start_width)) > 1e-9 or abs(float(v.dxf.end_width)) > 1e-9
+                        for v in e.vertices
+                    ):
                         pline_wide += 1
                 except Exception:
                     pass
@@ -385,22 +357,12 @@ def analyze_symbol_entities(doc) -> dict:
         for e in b:
             look(e)
 
-    report = {
-        "types_top": stats.most_common(15),
-        "hatch_solid": hatch_solid,
-        "hatch_other": hatch_other,
-        "polyline_with_width": pline_wide,
-        "circle": circle_n,
-        "solid": solid_n,
-        "insert": insert_n,
-    }
-    print("--- Phase A: ชนิดวัตถุที่เกี่ยวข้องกับสัญลักษณ์ ---")
-    print("  top types:", ", ".join(f"{k}={v}" for k, v in report["types_top"]))
+    print("--- Phase A ---")
+    print("  top:", ", ".join(f"{k}={v}" for k, v in stats.most_common(12)))
     print(
-        f"  HATCH solid={hatch_solid} pattern={hatch_other} | "
-        f"POLYLINE กว้าง={pline_wide} | CIRCLE={circle_n} | SOLID={solid_n} | INSERT={insert_n}"
+        f"  HATCH solid={hatch_solid} other={hatch_other} | "
+        f"PLINE กว้าง={pline_wide} | CIRCLE={circle_n} | SOLID={solid_n} | INSERT={insert_n}"
     )
-    return report
 
 
 def _is_solid_hatch(e) -> bool:
@@ -409,138 +371,194 @@ def _is_solid_hatch(e) -> bool:
             return False
         if bool(e.dxf.solid_fill):
             return True
-        name = (e.dxf.pattern_name or "").upper()
-        return name in ("SOLID", "")
+        return (e.dxf.pattern_name or "").upper() in ("SOLID", "")
     except Exception:
         return False
 
 
-def sharpen_symbols(doc, drawing_span: float) -> dict:
-    """Phase B: ลดก้อนทึบ
-
-    - ตัดความกว้าง polyline ทั้งหมด (สัญลักษณ์ไฟฟ้าควรเป็นเส้น)
-    - ลบ HATCH solid / SOLID ที่ขนาดเล็กกว่าเกณฑ์ (มักเป็นจุดอุปกรณ์)
-    - คง HATCH ใหญ่ไว้ (พื้นที่สีพื้น)
-    """
-    # เกณฑ์: สัญลักษณ์เล็กกว่า ~0.8% ของด้านยาวผัง (ปรับด้วย env ได้)
-    frac = float(os.environ.get("PDF_SYMBOL_MAX_FRAC", "0.008"))
-    min_abs = float(os.environ.get("PDF_SYMBOL_MIN_ABS", "5"))  # หน่วย DXF
-    max_sym = max(min_abs, drawing_span * frac)
-    # ถ้าอยากลบ HATCH solid เกือบทั้งหมดของสัญลักษณ์ ใช้เกณฑ์สูงขึ้นเล็กน้อย
-    max_hatch = max(max_sym, drawing_span * float(os.environ.get("PDF_HATCH_MAX_FRAC", "0.012")))
-
-    removed_hatch = 0
-    removed_solid = 0
-    cleared_width = 0
-
-    def clear_poly_width(e) -> int:
-        n = 0
-        t = e.dxftype()
+def _clear_lwpolyline_width(e) -> bool:
+    """บังคับความกว้างเป็น 0 — สาเหตุหลักที่สายป้อนบวม"""
+    changed = False
+    try:
+        if e.dxf.hasattr("const_width") and abs(float(e.dxf.const_width)) > 1e-12:
+            e.dxf.const_width = 0.0
+            changed = True
+    except Exception:
+        pass
+    # ล้างความกว้างรายจุด
+    try:
+        pts = list(e.get_points("xyseb"))
+        new_pts = []
+        for p in pts:
+            x, y = p[0], p[1]
+            sw = float(p[2]) if len(p) > 2 else 0.0
+            ew = float(p[3]) if len(p) > 3 else 0.0
+            bulge = float(p[4]) if len(p) > 4 else 0.0
+            if abs(sw) > 1e-12 or abs(ew) > 1e-12:
+                changed = True
+            new_pts.append((x, y, 0.0, 0.0, bulge))
+        if new_pts:
+            e.set_points(new_pts, format="xyseb")
+    except Exception:
         try:
-            if t == "LWPOLYLINE":
-                if e.dxf.hasattr("const_width") and float(e.dxf.const_width) > 1e-9:
-                    e.dxf.const_width = 0.0
-                    n += 1
-                # รีเซ็ตความกว้างรายจุด
-                try:
-                    pts = list(e.get_points("xyb"))
-                    # format without width
-                    e.set_points([(p[0], p[1], p[2] if len(p) > 2 else 0.0) for p in pts], format="xyb")
-                except Exception:
-                    try:
-                        with e.points("xyseb") as pts:
-                            for p in pts:
-                                p[3] = 0.0  # start width
-                                p[4] = 0.0  # end width
-                        n += 1
-                    except Exception:
-                        pass
-            elif t == "POLYLINE":
-                for v in e.vertices:
-                    try:
-                        if abs(float(v.dxf.start_width)) > 1e-9 or abs(float(v.dxf.end_width)) > 1e-9:
-                            v.dxf.start_width = 0.0
-                            v.dxf.end_width = 0.0
-                            n += 1
-                    except Exception:
-                        pass
+            pts = list(e.get_points("xyb"))
+            e.set_points([(p[0], p[1], p[2] if len(p) > 2 else 0.0) for p in pts], format="xyb")
         except Exception:
             pass
-        return n
+    return changed
 
-    def process_layout(layout_ents, is_block: bool):
-        nonlocal removed_hatch, removed_solid, cleared_width
-        # เก็บรายการที่จะลบ — ห้ามลบขณะ iterate
+
+def _clear_polyline_width(e) -> bool:
+    changed = False
+    try:
+        for v in e.vertices:
+            try:
+                if abs(float(v.dxf.start_width)) > 1e-12 or abs(float(v.dxf.end_width)) > 1e-12:
+                    v.dxf.start_width = 0.0
+                    v.dxf.end_width = 0.0
+                    changed = True
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return changed
+
+
+def _hatch_paths_to_polylines(layout, hatch) -> int:
+    """แปลง path ของ HATCH เป็น LWPOLYLINE เส้นบาง (outline ของสัญลักษณ์)"""
+    n = 0
+    try:
+        layer = hatch.dxf.layer if hatch.dxf.hasattr("layer") else "0"
+        color = hatch.dxf.color if hatch.dxf.hasattr("color") else 256
+        for path in hatch.paths:
+            pts = []
+            try:
+                # polyline path
+                if hasattr(path, "vertices"):
+                    for v in path.vertices:
+                        if hasattr(v, "x"):
+                            pts.append((float(v.x), float(v.y)))
+                        elif isinstance(v, (list, tuple)) and len(v) >= 2:
+                            pts.append((float(v[0]), float(v[1])))
+                # edge path
+                if hasattr(path, "edges") and not pts:
+                    for edge in path.edges:
+                        try:
+                            et = edge.EDGE_TYPE if hasattr(edge, "EDGE_TYPE") else type(edge).__name__
+                            if "Line" in str(et) or hasattr(edge, "start") and hasattr(edge, "end"):
+                                s, e_ = edge.start, edge.end
+                                if not pts:
+                                    pts.append((float(s[0]), float(s[1])))
+                                pts.append((float(e_[0]), float(e_[1])))
+                            elif "Arc" in str(et) or hasattr(edge, "center"):
+                                # ประมาณอาร์คเป็นหลายจุด
+                                center = edge.center
+                                r = float(edge.radius)
+                                a0 = math.radians(float(edge.start_angle))
+                                a1 = math.radians(float(edge.end_angle))
+                                if a1 < a0:
+                                    a1 += 2 * math.pi
+                                steps = max(8, int(abs(a1 - a0) / (math.pi / 12)))
+                                for i in range(steps + 1):
+                                    a = a0 + (a1 - a0) * i / steps
+                                    pts.append((float(center[0]) + r * math.cos(a), float(center[1]) + r * math.sin(a)))
+                        except Exception:
+                            continue
+            except Exception:
+                continue
+            if len(pts) < 2:
+                continue
+            # ปิดรูปถ้าจุดแรก-ท้ายใกล้กัน
+            closed = abs(pts[0][0] - pts[-1][0]) < 1e-6 and abs(pts[0][1] - pts[-1][1]) < 1e-6
+            try:
+                pl = layout.add_lwpolyline(pts, close=closed, dxfattribs={"layer": layer, "color": color, "lineweight": 18})
+                pl.dxf.const_width = 0.0
+                n += 1
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return n
+
+
+def sharpen_symbols(doc, drawing_span: float) -> None:
+    frac = float(os.environ.get("PDF_SYMBOL_MAX_FRAC", "0.02"))  # กว้างขึ้น — จับสัญลักษณ์มากขึ้น
+    max_sym = max(float(os.environ.get("PDF_SYMBOL_MIN_ABS", "8")), drawing_span * frac)
+    max_hatch = max(max_sym, drawing_span * float(os.environ.get("PDF_HATCH_MAX_FRAC", "0.03")))
+
+    cleared_w = 0
+    outlined = 0
+    removed = 0
+
+    def process(layout, is_block: bool):
+        nonlocal cleared_w, outlined, removed
+        to_replace = []  # hatches to outline+delete
         to_delete = []
-        for e in layout_ents:
+
+        for e in list(layout):
             t = e.dxftype()
-            if t in ("LWPOLYLINE", "POLYLINE"):
-                cleared_width += clear_poly_width(e)
+            if t == "LWPOLYLINE":
+                if _clear_lwpolyline_width(e):
+                    cleared_w += 1
+            elif t == "POLYLINE":
+                if _clear_polyline_width(e):
+                    cleared_w += 1
             elif t == "HATCH" and _is_solid_hatch(e):
                 sp = _entity_span(e)
-                # ในบล็อกสัญลักษณ์: ลบ solid hatch เกือบทั้งหมด
-                # ใน model space: ลบเฉพาะของเล็ก
-                limit = max_hatch * (3.0 if is_block else 1.0)
-                if sp <= limit or (is_block and sp < drawing_span * 0.05):
-                    to_delete.append(e)
-            elif t == "SOLID":
+                limit = max_hatch * (4.0 if is_block else 1.0)
+                if sp <= limit or is_block:
+                    to_replace.append(e)
+            elif t in ("SOLID", "TRACE"):
                 sp = _entity_span(e)
-                if sp <= max_sym * (2.0 if is_block else 1.0):
+                if sp <= max_sym * (3.0 if is_block else 1.0):
                     to_delete.append(e)
-            elif t == "TRACE":
-                sp = _entity_span(e)
-                if sp <= max_sym:
-                    to_delete.append(e)
-        for e in to_delete:
+
+        for e in to_replace:
+            n = _hatch_paths_to_polylines(layout, e)
+            outlined += n
             try:
-                t = e.dxftype()
-                layout_ents.delete_entity(e)
-                if t == "HATCH":
-                    removed_hatch += 1
-                elif t in ("SOLID", "TRACE"):
-                    removed_solid += 1
+                layout.delete_entity(e)
+                removed += 1
             except Exception:
                 try:
-                    # API ทางเลือก
                     e.destroy()
-                    if e.dxftype() == "HATCH":
-                        removed_hatch += 1
-                    else:
-                        removed_solid += 1
+                    removed += 1
                 except Exception:
                     pass
 
-    process_layout(doc.modelspace(), is_block=False)
+        for e in to_delete:
+            try:
+                layout.delete_entity(e)
+                removed += 1
+            except Exception:
+                try:
+                    e.destroy()
+                    removed += 1
+                except Exception:
+                    pass
+
+    process(doc.modelspace(), False)
     for b in doc.blocks:
         if b.name.startswith("*"):
             continue
-        process_layout(b, is_block=True)
+        process(b, True)
 
-    result = {
-        "removed_hatch_solid": removed_hatch,
-        "removed_solid": removed_solid,
-        "cleared_polyline_width": cleared_width,
-        "symbol_span_limit": round(max_sym, 2),
-        "hatch_span_limit": round(max_hatch, 2),
-    }
-    print("--- Phase B: ลดก้อนทึบสัญลักษณ์ ---")
-    print(
-        f"  ลบ HATCH solid เล็ก={removed_hatch}, SOLID/TRACE={removed_solid}, "
-        f"ตัดความกว้าง polyline={cleared_width}"
-    )
-    print(f"  เกณฑ์ขนาดสัญลักษณ์ ≤ {max_sym:.1f} (hatch ≤ {max_hatch:.1f}) จาก span ผัง {drawing_span:.0f}")
-    return result
+    print("--- Phase B v9 ---")
+    print(f"  ตัดความกว้าง polyline={cleared_w}")
+    print(f"  HATCH→outline paths={outlined}, ลบทึบ={removed}")
+    print(f"  เกณฑ์สัญลักษณ์ ≤ {max_sym:.1f} / hatch ≤ {max_hatch:.1f} (span ผัง {drawing_span:.0f})")
 
 
 def build_draw_config() -> Configuration:
-    min_lw = float(os.environ.get("PDF_MIN_LINEWEIGHT_MM", "0.01"))
+    # บางลงกว่าเดิมชัดเจน
+    min_lw = float(os.environ.get("PDF_MIN_LINEWEIGHT_MM", "0.005"))
     kwargs = dict(
         background_policy=BackgroundPolicy.WHITE,
         color_policy=ColorPolicy.COLOR,
         text_policy=TextPolicy.IGNORE,
         min_lineweight=min_lw,
-        lineweight_scaling=float(os.environ.get("PDF_LINEWEIGHT_SCALING", "0.35")),
-        max_lineweight=float(os.environ.get("PDF_MAX_LINEWEIGHT_MM", "0.25")),
+        lineweight_scaling=float(os.environ.get("PDF_LINEWEIGHT_SCALING", "0.25")),
+        max_lineweight=float(os.environ.get("PDF_MAX_LINEWEIGHT_MM", "0.18")),
     )
     if LineweightPolicy is not None:
         try:
@@ -562,11 +580,11 @@ def main(src: str, dst: str, texts_out: str = "") -> None:
     fixed_path = src + ".fixed.dxf"
     n_fixed = sanitize_dxf(src, fixed_path)
     if n_fixed:
-        print(f"ซ่อมโครงสร้าง DXF {n_fixed} จุด (ข้อความที่มีการขึ้นบรรทัดใหม่)")
+        print(f"ซ่อมโครงสร้าง DXF {n_fixed} จุด")
     try:
         doc = ezdxf.readfile(fixed_path)
     except Exception as e:
-        print(f"อ่านแบบปกติไม่ได้ ({type(e).__name__}) → ใช้โหมดกู้ไฟล์")
+        print(f"อ่านแบบปกติไม่ได้ ({type(e).__name__}) → กู้ไฟล์")
         from ezdxf import recover
 
         doc, _auditor = recover.readfile(fixed_path)
@@ -576,15 +594,13 @@ def main(src: str, dst: str, texts_out: str = "") -> None:
     msp = doc.modelspace()
     ext = bbox.extents(msp, fast=True)
     if not ext.has_data:
-        raise SystemExit("ไม่พบเส้น/วัตถุในผังหลัก (Model space ว่าง)")
+        raise SystemExit("ไม่พบเส้น/วัตถุในผังหลัก")
 
     from collections import Counter
 
     kinds = Counter(e.dxftype() for e in msp)
-    print(f"Model space: {sum(kinds.values())} วัตถุ → " + ", ".join(f"{k}={v}" for k, v in kinds.most_common(10)))
+    print(f"Model space: {sum(kinds.values())} → " + ", ".join(f"{k}={v}" for k, v in kinds.most_common(10)))
     print(f"Extents: x {ext.extmin.x:.0f}..{ext.extmax.x:.0f}  y {ext.extmin.y:.0f}..{ext.extmax.y:.0f}")
-    off = [l.dxf.name for l in doc.layers if not l.is_on() or l.is_frozen()]
-    print(f"เลเยอร์ทั้งหมด {len(doc.layers)} (ปิด/แช่แข็ง {len(off)}), บล็อก {len(doc.blocks)}")
 
     for layer in doc.layers:
         try:
@@ -594,12 +610,12 @@ def main(src: str, dst: str, texts_out: str = "") -> None:
             pass
 
     drawing_span = float(max(ext.size.x, ext.size.y, 1.0))
-    analyze_symbol_entities(doc)  # Phase A
-    sharpen_symbols(doc, drawing_span)  # Phase B
+    analyze_symbol_entities(doc)
+    sharpen_symbols(doc, drawing_span)
 
     n_lw = thin_entity_lineweights(doc)
     if n_lw:
-        print(f"ลด lineweight ที่หนาเกิน {n_lw} จุด")
+        print(f"ลด lineweight หนาเกิน {n_lw} จุด")
 
     w = max(ext.size.x, 1e-6)
     h = max(ext.size.y, 1e-6)
@@ -611,9 +627,9 @@ def main(src: str, dst: str, texts_out: str = "") -> None:
 
     cfg = build_draw_config()
     print(
-        f"lineweight: min={getattr(cfg, 'min_lineweight', '?')} mm, "
-        f"scale={getattr(cfg, 'lineweight_scaling', '?')}, "
-        f"max={getattr(cfg, 'max_lineweight', '?')} mm"
+        f"lineweight: min={getattr(cfg, 'min_lineweight', '?')} "
+        f"scale={getattr(cfg, 'lineweight_scaling', '?')} "
+        f"max={getattr(cfg, 'max_lineweight', '?')}"
     )
     ctx = RenderContext(doc)
     backend = ezpdf.PyMuPdfBackend()
@@ -652,19 +668,13 @@ def main(src: str, dst: str, texts_out: str = "") -> None:
             items.append([t, round(x, 1), round(y, 1), round(fs, 2)])
         with open(texts_out, "w", encoding="utf-8") as f:
             json.dump(items, f, ensure_ascii=False, separators=(",", ":"))
-        print(f"ดัชนีข้อความ: {len(items)} รายการ → {texts_out}")
-    print(f"ข้อความ: พบ {len(texts)} ชิ้น, ใส่ลง PDF {n_text} บรรทัด")
+        print(f"ดัชนีข้อความ: {len(items)} → {texts_out}")
+    print(f"ข้อความ: พบ {len(texts)}, ใส่ PDF {n_text}")
     pdf = doc_pdf.tobytes(garbage=3, deflate=True)
     doc_pdf.close()
     with open(dst, "wb") as f:
         f.write(pdf)
-    try:
-        with mu.open(dst) as d:
-            pg = d[0]
-            print(f"ในหน้า PDF: เส้น/รูปทรง {len(pg.get_drawings())} ชิ้น, ตัวอักษร {len(pg.get_text())} ตัว")
-    except Exception as e:
-        print(f"(ตรวจ PDF ไม่ได้: {e})")
-    print(f"PDF ok: {dst} ({len(pdf)/1048576:.1f} MB, page {page_w:.0f}x{page_h:.0f} mm)")
+    print(f"PDF ok: {dst} ({len(pdf)/1048576:.1f} MB)")
 
 
 if __name__ == "__main__":
