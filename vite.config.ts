@@ -9,10 +9,11 @@ export default defineConfig(() => {
     plugins: [react(), tailwindcss()],
     build: {
       rollupOptions: {
-        // index.html = หน้าแรก (3 ปุ่ม), viewer.html = ตัวดูแผนผัง CAD
+        // index.html = หน้าแรก (3 ปุ่ม), viewer.html = ตัวดูแผนผัง CAD, map.html = ผังแบบแผนที่ (มือถือ/tablet)
         input: {
           main: path.resolve(__dirname, 'index.html'),
           viewer: path.resolve(__dirname, 'viewer.html'),
+          map: path.resolve(__dirname, 'map.html'),
         },
       },
     },

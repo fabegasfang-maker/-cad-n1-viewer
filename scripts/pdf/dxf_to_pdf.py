@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""DXF -> PDF แบบเวกเตอร์ (ซูมได้ไม่แตก) ทั้งแผนผังในหน้าเดียว
+"""DXF -> PDF แบบเวกเตอร์ ทั้งแผนผังในหน้าเดียว (ขนาด A0) ใช้เป็นต้นทางสร้างกระเบื้องแผนที่
 
-ใช้: dxf_to_pdf.py in.dxf out.pdf
+ใช้: dxf_to_pdf.py in.dxf out.pdf [texts.json]
+  texts.json (ถ้าระบุ) = [[ข้อความ, x_pt, y_pt, ขนาดฟอนต์_pt], ...] สำหรับทำช่องค้นหา
 """
 import os
 import re
@@ -24,7 +25,7 @@ from ezdxf.addons.drawing import pymupdf as ezpdf
 from ezdxf.addons.drawing.config import BackgroundPolicy, ColorPolicy, Configuration, TextPolicy
 
 # ความยาวด้านยาวของหน้า PDF (มม.) ~ A1 เพื่อให้ตัวหนังสือไม่เล็กเกินไปตอนเปิดบนมือถือ/tablet
-LONG_SIDE_MM = 841.0
+LONG_SIDE_MM = 1189.0  # ด้านยาว A0
 MAX_ASPECT = 6.0  # กันผังแคบยาวผิดปกติ
 
 
@@ -173,7 +174,7 @@ def collect_texts(doc, msp):
     return texts
 
 
-def place_texts(page, m, texts, font_file) -> int:
+def place_texts(page, m, texts, font_file, index=None) -> int:
     """เขียนข้อความลงหน้า PDF (m = เมทริกซ์ DXF → พิกัดหน้า PDF เดียวกับที่ใช้วางเส้น)"""
     font = mu.Font(fontfile=font_file)
     # page.insert_text ทีละชิ้นช้าแบบทวีคูณ (3,000 ชิ้น = 21 วินาที, 2 หมื่นชิ้น = เกิน 15 นาที)
@@ -232,6 +233,8 @@ def place_texts(page, m, texts, font_file) -> int:
                 dirv = m.transform(Vec2(ox + ca, oy + sa)) - p
                 a_out = math.degrees(math.atan2(dirv.y, dirv.x))
                 pt = mu.Point(p.x, p.y)
+                if index is not None and len(line.strip()) >= 2:
+                    index.append((line.strip(), p.x, p.y, fs))
                 if abs(a_out) > 0.01:
                     # ข้อความเอียง/แนวตั้ง: หมุนรอบจุดวางของตัวเอง (หมุนทีละชิ้น)
                     tw1 = mu.TextWriter(page.rect)
@@ -263,7 +266,7 @@ def force_thai_font(doc) -> None:
             pass
 
 
-def main(src: str, dst: str) -> None:
+def main(src: str, dst: str, texts_out: str = "") -> None:
     # recover: ยอมรับ DXF ที่ได้จากการแปลงแล้วมีส่วนที่ไม่สมบูรณ์เล็กน้อย
     fixed_path = src + ".fixed.dxf"
     n_fixed = sanitize_dxf(src, fixed_path)
@@ -314,8 +317,8 @@ def main(src: str, dst: str) -> None:
         background_policy=BackgroundPolicy.WHITE,
         color_policy=ColorPolicy.COLOR,
         text_policy=TextPolicy.IGNORE,  # ข้อความใส่ทีหลังด้วย PyMuPDF (เร็วกว่ามาก)
-        # เส้นบางสุด ~0.1 มม. กันเส้นหายตอนซูมออก
-        min_lineweight=0.1,
+            # ความหนาเส้นต่ำสุด (มม. บนกระดาษ A0) → ที่ภาพซูมสูงสุดจะหนา ~1.5 พิกเซล
+        min_lineweight=float(os.environ.get("PDF_MIN_LINEWEIGHT_MM", "0.05")),
     )
     ctx = RenderContext(doc)
     backend = ezpdf.PyMuPdfBackend()
@@ -337,7 +340,22 @@ def main(src: str, dst: str) -> None:
 
     texts = collect_texts(doc, msp)
     doc_pdf = mu.open(stream=pdf, filetype="pdf")
-    n_text = place_texts(doc_pdf[0], m, texts, find_thai_font())
+    index: list = []
+    n_text = place_texts(doc_pdf[0], m, texts, find_thai_font(), index)
+    if texts_out:
+        import json
+
+        seen = set()
+        items = []
+        for t, x, y, fs in index:
+            k = (t, round(x / 4), round(y / 4))
+            if k in seen:
+                continue
+            seen.add(k)
+            items.append([t, round(x, 1), round(y, 1), round(fs, 2)])
+        with open(texts_out, "w", encoding="utf-8") as f:
+            json.dump(items, f, ensure_ascii=False, separators=(",", ":"))
+        print(f"ดัชนีข้อความ: {len(items)} รายการ → {texts_out}")
     print(f"ข้อความ: พบ {len(texts)} ชิ้น, ใส่ลง PDF {n_text} บรรทัด")
     pdf = doc_pdf.tobytes(garbage=3, deflate=True)
     doc_pdf.close()
@@ -353,6 +371,6 @@ def main(src: str, dst: str) -> None:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
+    if len(sys.argv) not in (3, 4):
         raise SystemExit(__doc__)
-    main(sys.argv[1], sys.argv[2])
+    main(sys.argv[1], sys.argv[2], sys.argv[3] if len(sys.argv) == 4 else "")

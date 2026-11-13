@@ -7,6 +7,7 @@ coverage/
 .env*
 !.env.example
 
-# สร้างอัตโนมัติใน GitHub Actions (scripts/pdf/build-latest-pdf.mjs)
-public/latest.pdf
-public/latest.json
+# สร้างอัตโนมัติใน GitHub Actions (scripts/pdf/build-map.mjs)
+public/map/
+.map-tiles/
+.map-push/

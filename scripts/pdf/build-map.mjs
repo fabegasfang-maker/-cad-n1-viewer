@@ -1,13 +1,15 @@
 /**
- * สร้าง public/latest.pdf จากไฟล์ DWG ล่าสุดบน Google Drive (รันใน GitHub Actions ก่อน build)
+ * สร้างกระเบื้องแผนที่ (public/map) จากไฟล์ DWG ล่าสุดบน Google Drive — รันใน GitHub Actions ก่อน build
  *
  *   1) หาไฟล์ .dwg ล่าสุด (โฟลเดอร์เดือนล่าสุด → ไฟล์ล่าสุด) ด้วยกติกาเดียวกับตัวดู
- *   2) ถ้ายังเป็นไฟล์เดิมกับ PDF ที่เผยแพร่อยู่แล้ว → ใช้ PDF เดิม ไม่แปลงซ้ำ
- *   3) ไม่เช่นนั้น: ดาวน์โหลด → DWG→DXF (LibreDWG wasm) → PDF (ezdxf + PyMuPDF)
- *   4) ถ้าขั้นตอนใดพัง จะคง PDF เดิมไว้ (ถ้ามี) เพื่อไม่ให้ไฟล์หายจากหน้าเว็บ
+ *   2) ถ้ายังเป็นไฟล์เดิมกับกระเบื้องที่มีอยู่แล้วใน public/map → ไม่ทำซ้ำ
+ *   3) ไม่เช่นนั้น: ดาวน์โหลด → DWG→DXF (LibreDWG wasm) → PDF A0 (ezdxf + PyMuPDF)
+ *      → กระเบื้องภาพหลายระดับซูม + ดัชนีค้นหา (make-tiles.py)
+ *   4) เขียนทับ public/map เฉพาะเมื่อสร้างสำเร็จทั้งหมด ถ้าพังจะคงของเดิมไว้
+ *   5) แจ้ง map_changed=true ผ่าน $GITHUB_OUTPUT เพื่อให้ workflow บันทึกลง branch map-tiles
  *
  * env: GOOGLE_API_KEY (จำเป็น), DRIVE_FOLDER_ID (ไม่ใส่ = ค่าเริ่มต้นเดียวกับหน้าแรก),
- *      SITE_URL (เช่น https://user.github.io/repo — ใช้ดึง PDF เดิมมาเทียบ)
+ *      SITE_URL (ใช้เป็น Referer เพราะ key จำกัดตามเว็บ), FORCE_MAP=1 (สร้างใหม่เสมอ)
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -17,17 +19,16 @@ import { fileURLToPath } from 'node:url';
 import { dwgToDxf } from './dwg-to-dxf.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const OUT_DIR = path.resolve(HERE, '../../public');
-const PDF_PATH = path.join(OUT_DIR, 'latest.pdf');
-const META_PATH = path.join(OUT_DIR, 'latest.json');
+const MAP_DIR = path.resolve(HERE, '../../public/map');
+const META_PATH = path.join(MAP_DIR, 'meta.json');
 
 const API = 'https://www.googleapis.com/drive/v3/files';
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
 const KEY = process.env.GOOGLE_API_KEY || '';
 const FOLDER_ID = process.env.DRIVE_FOLDER_ID || '1mP47qarQZxPF-ln5Dy7VZrJlcq0uPJ4D';
 const SITE_URL = (process.env.SITE_URL || '').replace(/\/$/, '');
-// เพิ่มเลขนี้ทุกครั้งที่สูตรแปลง PDF เปลี่ยน เพื่อให้สร้างใหม่แม้ไฟล์ใน Drive ไม่เปลี่ยน
-const GENERATOR_VERSION = 3;
+// เพิ่มเลขนี้ทุกครั้งที่สูตรแปลง/สร้างกระเบื้องเปลี่ยน เพื่อให้สร้างใหม่แม้ไฟล์ใน Drive ไม่เปลี่ยน
+const GENERATOR_VERSION = 4;
 const MOBILE_NAME = /mobile|mob\b|phone|เล็ก|มือถือ|_mobile/i;
 
 const THAI_MONTHS = {
@@ -104,45 +105,41 @@ async function resolveLatest() {
   return best;
 }
 
-async function fetchPrevious() {
-  if (!SITE_URL) return null;
+function readPrevMeta() {
   try {
-    const m = await fetch(`${SITE_URL}/latest.json`, { cache: 'no-store' });
-    const p = await fetch(`${SITE_URL}/latest.pdf`, { cache: 'no-store' });
-    if (!m.ok || !p.ok) return null;
-    const prevMeta = await m.json();
-    const buf = Buffer.from(await p.arrayBuffer());
-    if (buf.length < 1000 || buf.subarray(0, 4).toString() !== '%PDF') return null;
-    return { meta: prevMeta, pdf: buf };
-  } catch {
-    return null;
-  }
+    const m = JSON.parse(fs.readFileSync(META_PATH, 'utf8'));
+    // ต้องมีกระเบื้องจริงอยู่ด้วย
+    if (m && fs.existsSync(path.join(MAP_DIR, 'tiles')) && fs.existsSync(path.join(MAP_DIR, 'index.json'))) return m;
+  } catch {}
+  return null;
+}
+
+function setOutput(name, value) {
+  if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, `${name}=${value}\n`);
 }
 
 async function main() {
-  if (!KEY) { console.log('::warning::ไม่มี GOOGLE_API_KEY → ข้ามการสร้าง PDF'); return; }
-  fs.mkdirSync(OUT_DIR, { recursive: true });
+  setOutput('map_changed', 'false');
+  if (!KEY) { console.log('::warning::ไม่มี GOOGLE_API_KEY → ข้ามการสร้างแผนที่'); return; }
 
-  const prev = await fetchPrevious();
-  if (prev) {
-    // วาง PDF เดิมไว้ก่อน เป็นตัวสำรองหากขั้นตอนต่อไปพัง
-    fs.writeFileSync(PDF_PATH, prev.pdf);
-    fs.writeFileSync(META_PATH, JSON.stringify(prev.meta, null, 2));
-    console.log(`พบ PDF เดิม: ${prev.meta.sourceName} (${prev.meta.sourceModified})`);
-  }
+  const prev = readPrevMeta();
+  if (prev) console.log(`พบกระเบื้องเดิม: ${prev.sourceName} (${prev.sourceModified}, ${prev.tiles} ไฟล์)`);
 
   const latest = await resolveLatest();
   console.log(`ไฟล์ล่าสุดบน Drive: ${latest.name} (${latest.modifiedTime}, ${(Number(latest.size || 0) / 1048576).toFixed(1)} MB)`);
 
-  if (!process.env.FORCE_PDF && prev && prev.meta.generatorVersion === GENERATOR_VERSION && prev.meta.sourceId === latest.id && prev.meta.sourceModified === latest.modifiedTime) {
-    console.log('ไฟล์ยังไม่เปลี่ยน → ใช้ PDF เดิม');
+  if (!process.env.FORCE_MAP && prev && prev.generatorVersion === GENERATOR_VERSION
+      && prev.sourceId === latest.id && prev.sourceModified === latest.modifiedTime) {
+    console.log('ไฟล์ยังไม่เปลี่ยน → ใช้กระเบื้องเดิม');
     return;
   }
 
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cadpdf-'));
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cadmap-'));
   const dwg = path.join(tmp, 'in.dwg');
   const dxf = path.join(tmp, 'out.dxf');
   const pdf = path.join(tmp, 'out.pdf');
+  const texts = path.join(tmp, 'texts.json');
+  const outMap = path.join(tmp, 'map');
 
   console.log('ดาวน์โหลด DWG...');
   const res = await fetch(`${API}/${latest.id}?alt=media&supportsAllDrives=true&key=${encodeURIComponent(KEY)}`, { headers: HEADERS });
@@ -152,22 +149,32 @@ async function main() {
   console.log('DWG → DXF...');
   await dwgToDxf(dwg, dxf);
 
-  console.log('DXF → PDF...');
-  execFileSync('python3', [path.join(HERE, 'dxf_to_pdf.py'), dxf, pdf], { stdio: 'inherit' });
+  console.log('DXF → PDF (A0)...');
+  execFileSync('python3', [path.join(HERE, 'dxf_to_pdf.py'), dxf, pdf, texts], { stdio: 'inherit' });
 
-  fs.copyFileSync(pdf, PDF_PATH);
-  fs.writeFileSync(META_PATH, JSON.stringify({
+  console.log('PDF → กระเบื้องแผนที่...');
+  execFileSync('python3', [path.join(HERE, 'make-tiles.py'), pdf, texts, outMap], { stdio: 'inherit' });
+
+  const meta = JSON.parse(fs.readFileSync(path.join(outMap, 'meta.json'), 'utf8'));
+  Object.assign(meta, {
     sourceId: latest.id,
     sourceName: latest.name,
     sourceModified: latest.modifiedTime,
     generatorVersion: GENERATOR_VERSION,
     generatedAt: new Date().toISOString(),
-    pdfBytes: fs.statSync(PDF_PATH).size,
-  }, null, 2));
-  console.log('สร้าง latest.pdf เรียบร้อย');
+  });
+  fs.writeFileSync(path.join(outMap, 'meta.json'), JSON.stringify(meta));
+
+  // สำเร็จทั้งหมดแล้วค่อยแทนที่ของเดิม
+  fs.rmSync(MAP_DIR, { recursive: true, force: true });
+  fs.mkdirSync(path.dirname(MAP_DIR), { recursive: true });
+  fs.cpSync(outMap, MAP_DIR, { recursive: true });
+  fs.rmSync(tmp, { recursive: true, force: true });
+  setOutput('map_changed', 'true');
+  console.log(`สร้างแผนที่เรียบร้อย: ${meta.tiles} กระเบื้อง, ซูม 0..${meta.maxZoom}`);
 }
 
 main().catch((e) => {
-  // ไม่ทำให้ deploy ทั้งเว็บล้ม: คง PDF เดิม (ถ้ามี) แล้วแจ้งเตือนในหน้า Actions
-  console.log(`::warning::สร้าง PDF ไม่สำเร็จ: ${e.message}`);
+  // ไม่ทำให้ deploy ทั้งเว็บล้ม: คงกระเบื้องเดิม (ถ้ามี) แล้วแจ้งเตือนในหน้า Actions
+  console.log(`::warning::สร้างแผนที่ไม่สำเร็จ: ${e.message}`);
 });

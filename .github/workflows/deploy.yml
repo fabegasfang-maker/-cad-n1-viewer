@@ -5,11 +5,11 @@ on:
     branches: [main]
   workflow_dispatch:
   schedule:
-    # ตรวจไฟล์ DWG ใหม่บน Drive ทุก 30 นาที แล้วสร้าง latest.pdf ใหม่เมื่อมีการเปลี่ยนแปลง
+    # ตรวจไฟล์ DWG ใหม่บน Drive ทุก 30 นาที แล้วสร้างกระเบื้องแผนที่ใหม่เมื่อมีการเปลี่ยนแปลง
     - cron: '*/30 * * * *'
 
 permissions:
-  contents: read
+  contents: write   # ใช้บันทึกกระเบื้องแผนที่ลง branch map-tiles
   pages: write
   id-token: write
 
@@ -21,6 +21,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      deploy: ${{ steps.decide.outputs.deploy }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -30,34 +32,71 @@ jobs:
         run: bun install
       - name: Restore Phase A (App + Canvas mobile guards)
         run: node scripts/restore-phase-a.mjs
-      - name: Install PDF tools (Thai fonts + ezdxf + PyMuPDF)
+      # กระเบื้องแผนที่เก็บไว้ใน branch map-tiles เพื่อไม่ต้องสร้างใหม่ทุกรอบ (สร้างเฉพาะเมื่อไฟล์ DWG เปลี่ยน)
+      - name: Fetch previously generated map tiles
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          ref: map-tiles
+          path: .map-tiles
+      - name: Place previous tiles into public/map
+        run: |
+          mkdir -p public/map
+          if [ -f .map-tiles/meta.json ]; then rsync -a --exclude .git .map-tiles/ public/map/; fi
+          ls public/map | head
+      - name: Install map tools (Thai fonts + ezdxf + PyMuPDF)
         continue-on-error: true
         run: |
           sudo apt-get update -q
           sudo apt-get install -y -q fonts-thai-tlwg-ttf
-          python3 -m pip install --break-system-packages -q ezdxf pymupdf pillow
-      - name: Build latest.pdf from newest DWG on Drive
-        # พังก็ไม่ทำให้ deploy ล้ม: สคริปต์จะคง PDF เดิมไว้
+          python3 -m pip install --break-system-packages -q ezdxf pymupdf pillow numpy
+      - name: Build map tiles from newest DWG on Drive
+        id: map
+        # พังก็ไม่ทำให้ deploy ล้ม: สคริปต์จะคงกระเบื้องเดิมไว้
         continue-on-error: true
-        run: node scripts/pdf/build-latest-pdf.mjs
+        run: node scripts/pdf/build-map.mjs
         env:
           GOOGLE_API_KEY: ${{ vars.VITE_GOOGLE_API_KEY }}
           # ตั้งค่า Variable ชื่อ DRIVE_FOLDER_ID ใน repo เมื่อย้ายโฟลเดอร์ Drive (ไม่ตั้ง = ค่าเริ่มต้น)
           DRIVE_FOLDER_ID: ${{ vars.DRIVE_FOLDER_ID }}
-          # สั่งรันมือ (workflow_dispatch) = สร้าง PDF ใหม่เสมอ แม้ไฟล์ใน Drive ไม่เปลี่ยน
-          FORCE_PDF: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
+          # สั่งรันมือ (workflow_dispatch) = สร้างใหม่เสมอ แม้ไฟล์ใน Drive ไม่เปลี่ยน
+          FORCE_MAP: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
           SITE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+      - name: Save tiles to branch map-tiles
+        if: steps.map.outputs.map_changed == 'true'
+        run: |
+          rm -rf .map-push && mkdir .map-push
+          rsync -a public/map/ .map-push/
+          cd .map-push
+          git init -q -b map-tiles
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "map tiles from newest DWG"
+          git push -q --force "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" map-tiles
+      - name: Decide whether to deploy
+        id: decide
+        # รอบตรวจอัตโนมัติ (cron) ที่ไฟล์ไม่เปลี่ยน ไม่ต้อง deploy ซ้ำ
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "${{ steps.map.outputs.map_changed }}" != "true" ]; then
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Build
+        if: steps.decide.outputs.deploy == 'true'
         run: bun run build
         env:
           VITE_STATIC_HOSTING: 'true'
           VITE_GOOGLE_API_KEY: ${{ vars.VITE_GOOGLE_API_KEY }}
       - uses: actions/upload-pages-artifact@v3
+        if: steps.decide.outputs.deploy == 'true'
         with:
           path: dist
 
   deploy:
     needs: build
+    if: needs.build.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
