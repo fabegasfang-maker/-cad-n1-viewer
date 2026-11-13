@@ -36,7 +36,6 @@
       }
       #map { position: absolute; inset: 0; background: #fff; }
       .leaflet-container { background: #fff; font: inherit; -webkit-tap-highlight-color: transparent; }
-      /* คมขึ้นตอนซูมเกิน native (เบราว์เซอร์จะสเกล tile) */
       .leaflet-tile { image-rendering: auto; }
 
       #bar {
@@ -47,11 +46,20 @@
       #bar > * { pointer-events: auto; }
       .chip {
         display: inline-flex; align-items: center; justify-content: center;
-        min-height: 44px; padding: 0 14px; border-radius: 12px;
+        min-height: 44px; padding: 0 12px; border-radius: 12px;
         border: 1px solid var(--line); background: var(--card); color: var(--text);
-        font: inherit; font-size: 0.95rem; text-decoration: none; box-shadow: 0 1px 6px rgba(0,0,0,.18);
+        font: inherit; font-size: 0.9rem; text-decoration: none; box-shadow: 0 1px 6px rgba(0,0,0,.18);
+        white-space: nowrap; cursor: pointer;
       }
-      a.chip:hover { background: var(--hover); }
+      a.chip:hover, button.chip:hover { background: var(--hover); }
+      button.chip {
+        font: inherit;
+      }
+      button.chip.on {
+        background: var(--primary);
+        border-color: var(--primary);
+        color: #fff;
+      }
       #search-wrap { position: relative; flex: 1; min-width: 0; }
       #q {
         width: 100%; min-height: 44px; padding: 0 14px; border-radius: 12px;
@@ -81,7 +89,6 @@
       .leaflet-bottom.leaflet-right { margin-bottom: env(safe-area-inset-bottom); margin-right: env(safe-area-inset-right); }
       .leaflet-bar a { width: 40px; height: 40px; line-height: 40px; font-size: 22px; }
 
-      /* ป้ายคมเฉพาะตอนซูมเกิน native (tile เริ่มเบลอ) — ไม่ทับข้อความใน tile */
       .cad-label {
         background: transparent !important;
         border: none !important;
@@ -123,6 +130,7 @@
 
     <div id="bar">
       <a class="chip" href="./" aria-label="กลับหน้าแรก">← หน้าแรก</a>
+      <button type="button" class="chip" id="btn-labels" aria-pressed="false" title="เปิด/ปิดป้ายชื่อคม (HTML)">ป้ายชื่อ: ปิด</button>
       <div id="search-wrap">
         <input id="q" type="search" inputmode="search" enterkeyhint="search" autocomplete="off" autocapitalize="off"
                spellcheck="false" placeholder="ค้นหาชื่อในผัง เช่น สถานี, หม้อแปลง" aria-label="ค้นหาชื่อในผัง" disabled />
@@ -148,6 +156,7 @@
       (function () {
         'use strict';
         var BLANK = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
+        var LABEL_KEY = 'cad_map_html_labels';
         var msg = document.getElementById('msg');
 
         function showMessage(title, text, actions) {
@@ -163,6 +172,13 @@
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;');
+        }
+
+        function readLabelsOn() {
+          try { return localStorage.getItem(LABEL_KEY) === '1'; } catch (e) { return false; }
+        }
+        function writeLabelsOn(on) {
+          try { localStorage.setItem(LABEL_KEY, on ? '1' : '0'); } catch (e) {}
         }
 
         fetch('map/meta.json', { cache: 'no-cache' })
@@ -232,9 +248,25 @@
         function setupSearchAndLabels(map, Z, ll) {
           var q = document.getElementById('q');
           var list = document.getElementById('results');
+          var btn = document.getElementById('btn-labels');
           var items = null, loading = false, marker = null;
           var labelLayer = L.layerGroup().addTo(map);
           var labelTimer = null;
+          var labelsOn = readLabelsOn();
+
+          function syncBtn() {
+            btn.classList.toggle('on', labelsOn);
+            btn.setAttribute('aria-pressed', labelsOn ? 'true' : 'false');
+            btn.textContent = labelsOn ? 'ป้ายชื่อ: เปิด' : 'ป้ายชื่อ: ปิด';
+          }
+          syncBtn();
+
+          btn.addEventListener('click', function () {
+            labelsOn = !labelsOn;
+            writeLabelsOn(labelsOn);
+            syncBtn();
+            scheduleLabels();
+          });
 
           function load() {
             if (items || loading) return;
@@ -254,6 +286,7 @@
                 items.sort(function (a, b) { return b.fs - a.fs; });
                 q.disabled = false;
                 if (q.value) render();
+                scheduleLabels();
               })
               .catch(function () { q.placeholder = 'ค้นหาใช้ไม่ได้ในขณะนี้'; })
               .then(function () { loading = false; });
@@ -302,11 +335,11 @@
             list.hidden = true;
             q.blur();
             var p = ll(it.x, it.y);
-            // ไปที่ระดับ native สูงสุด (ไม่ overzoom) เพื่อไม่ทับข้อความ
             map.flyTo(p, Z, { duration: 0.8 });
             if (marker) map.removeLayer(marker);
             marker = L.circleMarker(p, { radius: 26, color: '#dc2626', weight: 3, fillColor: '#dc2626', fillOpacity: 0.08 }).addTo(map);
             marker.on('click', function () { map.removeLayer(marker); marker = null; });
+            setTimeout(scheduleLabels, 900);
           }
 
           function scheduleLabels() {
@@ -316,11 +349,11 @@
 
           function updateLabels() {
             labelLayer.clearLayers();
-            if (!items || !items.length) return;
+            if (!labelsOn || !items || !items.length) return;
+
             var z = map.getZoom();
-            // สำคัญ: แสดงป้าย HTML เฉพาะตอนซูมเกิน native (tile ถูกขยายแล้วเบลอ)
-            // ถ้าระดับ <= Z ข้อความอยู่ใน tile อยู่แล้ว — ห้ามทับ (เคยทำให้ตัวหนังสือซ้อนกัน)
-            if (z <= Z + 0.15) return;
+            // ต้องซูมใกล้พอ ไม่งั้นป้ายทับกันทั้งจอ
+            if (z < Z - 1.5) return;
 
             var b = map.getBounds();
             var sw = map.project(b.getSouthWest(), Z);
@@ -330,9 +363,11 @@
             var minY = Math.min(sw.y, ne.y) - 40;
             var maxY = Math.max(sw.y, ne.y) + 40;
 
-            var minFs = 8;
-            var maxLabels = 180;
-            var scale = Math.pow(2, z - Z);
+            var minFs = z >= Z ? 7 : 11;
+            var maxLabels = z >= Z ? 220 : 100;
+            var scale = Math.pow(2, Math.max(0, z - Z));
+            // ตอนยังไม่ overzoom ใช้ขนาดใกล้เคียงตัวอักษรในผัง
+            if (z <= Z) scale = Math.max(0.55, Math.pow(2, z - Z));
             var shown = 0;
 
             for (var i = 0; i < items.length; i++) {
