@@ -23,6 +23,10 @@ jobs:
           SITE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
           FORCE_MAP: '1'
           DIAG_DIR: ${{ github.workspace }}/diag-out
+          DIAG_KEY: CMD04VS-116
+          DIAG_NEAR: zzzz
+          DIAG_W: "1100"
+          DIAG_H: "600"
         run: node scripts/pdf/build-map.mjs 2>&1 | tee diag-log.txt
       - name: Push results to branch diag
         run: |

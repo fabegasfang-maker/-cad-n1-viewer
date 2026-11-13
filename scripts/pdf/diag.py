@@ -174,6 +174,12 @@ def main(src, out_dir):
     hits = [(plain(e), pos(e)) for e in msp if e.dxftype() in ("TEXT", "MTEXT") and pos(e)]
     cand = [p for t, p in hits if key in t]
     ref = [p for t, p in hits if near_txt in t.replace("\n", " ")]
+    # ตรวจว่าข้อความ/วัตถุบริเวณที่หายยังอยู่ในไฟล์ DXF ที่แปลงมาหรือไม่
+    for probe in os.environ.get("DIAG_PROBE", "CMD04VS-116,CMD04VS-120,CMD09VS-106,Compact,RMU,50kVA,Spare").split(","):
+        found = [(round(p[0]), round(p[1])) for t, p in hits if probe in t.replace("\n", " ")]
+        print(f"probe '{probe}': {len(found)} จุด", found[:5])
+    inv = sum(1 for e in msp if e.dxf.get("invisible", 0))
+    print("วัตถุที่ตั้ง invisible ใน Model:", inv)
     print(f"พบข้อความ '{key}' {len(cand)} จุด, '{near_txt}' {len(ref)} จุด")
     if not cand:
         raise SystemExit("ไม่พบข้อความอ้างอิง")
@@ -197,6 +203,16 @@ def main(src, out_dir):
         except Exception:
             pass
     summarize(sel, doc, "วัตถุในหน้าต่าง")
+    print("invisible ในหน้าต่าง:", sum(1 for e in sel if e.dxf.get("invisible", 0)))
+    print("เลเยอร์ในหน้าต่าง:", dict(Counter(e.dxf.layer for e in sel).most_common(12)))
+    cols = Counter()
+    for e in sel:
+        if e.dxf.hasattr("true_color"):
+            cols[f"rgb{tuple(ezdxf.colors.int2rgb(e.dxf.true_color))}"] += 1
+        else:
+            cols[f"aci{e.dxf.get('color', 256)}"] += 1
+    print("สีในหน้าต่าง:", dict(cols.most_common(12)))
+    print("INSERT ในหน้าต่าง:", dict(Counter(e.dxf.name for e in sel if e.dxftype() == "INSERT").most_common(25)))
 
     variants = [
         ("A_current", cfg_of()),
