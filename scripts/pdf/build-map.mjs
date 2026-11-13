@@ -122,6 +122,13 @@ async function main() {
 
   await dwgToDxf(dwg, dxf);
 
+  if (process.env.DIAG_DIR) {
+    // โหมดวินิจฉัย: เรนเดอร์ภาพบริเวณหนึ่งด้วยค่าความหนาเส้นหลายแบบ แล้วจบ (ไม่แตะกระเบื้องจริง)
+    console.log('วินิจฉัย: เรนเดอร์ภาพเทียบค่าความหนาเส้น...');
+    execFileSync('python3', [path.join(HERE, 'diag.py'), dxf, process.env.DIAG_DIR], { stdio: 'inherit' });
+    return;
+  }
+
   execFileSync('python3', [path.join(HERE, 'dxf_to_pdf.py'), dxf, pdf, texts], {
     stdio: 'inherit',
     env: {

@@ -1,0 +1,36 @@
+name: Diagnose map rendering
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q fonts-thai-tlwg-ttf
+          python3 -m pip install --break-system-packages -q ezdxf pymupdf pillow numpy
+      - name: Render comparison images from newest DWG
+        env:
+          GOOGLE_API_KEY: ${{ vars.VITE_GOOGLE_API_KEY }}
+          DRIVE_FOLDER_ID: ${{ vars.DRIVE_FOLDER_ID }}
+          SITE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+          FORCE_MAP: '1'
+          DIAG_DIR: ${{ github.workspace }}/diag-out
+        run: node scripts/pdf/build-map.mjs 2>&1 | tee diag-log.txt
+      - name: Push results to branch diag
+        run: |
+          mkdir -p diag-out && cp diag-log.txt diag-out/log.txt
+          cd diag-out
+          git init -q -b diag
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "diagnostic renders"
+          git push -q --force "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" diag

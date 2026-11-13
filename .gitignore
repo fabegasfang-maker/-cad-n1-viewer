@@ -11,3 +11,5 @@ coverage/
 public/map/
 .map-tiles/
 .map-push/
+__pycache__/
+_dxf_to_pdf_real.py
