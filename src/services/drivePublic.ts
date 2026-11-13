@@ -106,9 +106,16 @@ export function pickLatestCadFile(allFiles: DriveFileMeta[], mobile = IS_MOBILE)
   if (mobile) {
     const mobileNamed = sortByModifiedDesc([...dwgs, ...dxfs].filter((f) => MOBILE_NAME.test(f.name || '')));
     if (mobileNamed.length) return mobileNamed[0];
-    const all = [...dwgs, ...dxfs].sort((a, b) => Number(a.size || 0) - Number(b.size || 0));
-    if (!all.length) throw new Error('ไม่พบไฟล์ .dwg หรือ .dxf ในโฟลเดอร์นี้');
-    return all[0];
+    // ไม่มีไฟล์ชื่อ mobile → ใช้ "ไฟล์ใหม่สุด" เหมือนเดสก์ท็อป
+    // (เดิมเลือก "ไฟล์เล็กสุด" ทำให้ได้ผังเก่า เช่น วันที่ 4 ทั้งที่ล่าสุดคือวันที่ 12)
+    // หมายเหตุ: ไม่ตัดไฟล์ชื่อ mobile ออกอีกต่อไป เพราะกรณีนี้ไม่มีไฟล์ mobile อยู่แล้ว
+    const newest = [...dwgs, ...dxfs].sort((a, b) => {
+      const ta = a.modifiedTime ? Date.parse(a.modifiedTime) : 0;
+      const tb = b.modifiedTime ? Date.parse(b.modifiedTime) : 0;
+      return tb - ta;
+    });
+    if (!newest.length) throw new Error('ไม่พบไฟล์ .dwg หรือ .dxf ในโฟลเดอร์นี้');
+    return newest.find((f) => /\.dwg$/i.test(f.name || '')) || newest[0];
   }
   const desktopDwgs = dwgs.filter((f) => !MOBILE_NAME.test(f.name || ''));
   if (desktopDwgs.length) return desktopDwgs[0];
