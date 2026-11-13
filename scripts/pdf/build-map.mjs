@@ -17,8 +17,8 @@ const FOLDER_MIME = 'application/vnd.google-apps.folder';
 const KEY = process.env.GOOGLE_API_KEY || '';
 const FOLDER_ID = process.env.DRIVE_FOLDER_ID || '1mP47qarQZxPF-ln5Dy7VZrJlcq0uPJ4D';
 const SITE_URL = (process.env.SITE_URL || '').replace(/\/$/, '');
-// v7: เส้นบางลงอีก + clamp lineweight ใน DXF
-const GENERATOR_VERSION = 7;
+// v8: Phase A/B — ตัด solid hatch เล็ก + ความกว้าง polyline
+const GENERATOR_VERSION = 8;
 const MOBILE_NAME = /mobile|mob\b|phone|เล็ก|มือถือ|_mobile/i;
 
 const THAI_MONTHS = {
@@ -135,7 +135,7 @@ async function main() {
   console.log('DWG → DXF...');
   await dwgToDxf(dwg, dxf);
 
-  console.log('DXF → PDF (เส้นบาง gen7)...');
+  console.log('DXF → PDF (Phase A/B symbols)...');
   execFileSync('python3', [path.join(HERE, 'dxf_to_pdf.py'), dxf, pdf, texts], {
     stdio: 'inherit',
     env: {
@@ -144,6 +144,8 @@ async function main() {
       PDF_LINEWEIGHT_SCALING: process.env.PDF_LINEWEIGHT_SCALING || '0.35',
       PDF_MAX_LINEWEIGHT_MM: process.env.PDF_MAX_LINEWEIGHT_MM || '0.25',
       PDF_ENTITY_MAX_LW: process.env.PDF_ENTITY_MAX_LW || '25',
+      PDF_SYMBOL_MAX_FRAC: process.env.PDF_SYMBOL_MAX_FRAC || '0.008',
+      PDF_HATCH_MAX_FRAC: process.env.PDF_HATCH_MAX_FRAC || '0.012',
     },
   });
 
