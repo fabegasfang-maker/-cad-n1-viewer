@@ -2,7 +2,6 @@
 """DXF -> PDF แบบเวกเตอร์ ทั้งแผนผังในหน้าเดียว (ขนาด A0) ใช้เป็นต้นทางสร้างกระเบื้องแผนที่
 
 ใช้: dxf_to_pdf.py in.dxf out.pdf [texts.json]
-  texts.json (ถ้าระบุ) = [[ข้อความ, x_pt, y_pt, ขนาดฟอนต์_pt], ...] สำหรับทำช่องค้นหา
 """
 import os
 import re
@@ -24,20 +23,18 @@ from ezdxf.addons.drawing import Frontend, RenderContext, layout
 from ezdxf.addons.drawing import pymupdf as ezpdf
 from ezdxf.addons.drawing.config import BackgroundPolicy, ColorPolicy, Configuration, TextPolicy
 
-# ลองนำเข้า LineweightPolicy (เวอร์ชันใหม่ของ ezdxf) — ถ้าไม่มีข้าม
 try:
     from ezdxf.addons.drawing.config import LineweightPolicy
 except Exception:
     LineweightPolicy = None  # type: ignore
 
-LONG_SIDE_MM = 1189.0  # ด้านยาว A0
+LONG_SIDE_MM = 1189.0
 MAX_ASPECT = 6.0
 
 _INT = re.compile(rb"^\s*-?\d+\s*$")
 
 
 def sanitize_dxf(src: str, dst: str) -> int:
-    """ซ่อม DXF จาก LibreDWG: ข้อความที่มี newline ดิบทำให้โครงสร้างเพี้ยน"""
     with open(src, "rb") as f:
         lines = f.read().split(b"\n")
     out: list[bytes] = []
@@ -259,24 +256,57 @@ def force_thai_font(doc) -> None:
             pass
 
 
+def thin_entity_lineweights(doc) -> int:
+    """ลด lineweight ของ entity / เลเยอร์ ที่ตั้งหนาเกินไปในไฟล์ต้น
+    (ค่า 0 = default ตามเลเยอร์, ติดลบ = default)
+    """
+    n = 0
+    # เพดาน ~0.25 มม. ในหน่วย DXF lineweight (100 = 1.00 มม.)
+    max_lw = int(float(os.environ.get("PDF_ENTITY_MAX_LW", "25")))  # 0.25 mm
+
+    def clamp_lw(e):
+        nonlocal n
+        try:
+            if not e.dxf.hasattr("lineweight"):
+                return
+            lw = int(e.dxf.lineweight)
+            if lw > max_lw:
+                e.dxf.lineweight = max_lw
+                n += 1
+        except Exception:
+            pass
+
+    for layer in doc.layers:
+        try:
+            lw = int(layer.dxf.lineweight) if layer.dxf.hasattr("lineweight") else -1
+            if lw > max_lw:
+                layer.dxf.lineweight = max_lw
+                n += 1
+        except Exception:
+            pass
+
+    for e in doc.modelspace():
+        clamp_lw(e)
+    for b in doc.blocks:
+        if b.name.startswith("*"):
+            continue
+        for e in b:
+            clamp_lw(e)
+    return n
+
+
 def build_draw_config() -> Configuration:
-    """คอนฟิกการวาด: เส้นบางลง เพื่อไม่ให้สัญลักษณ์ไฟฟ้ากลวง (วงกลม/SF6) กลายเป็นก้อนทึบ"""
-    # ค่าเดิม 0.05 มม. หนาเกินไปเมื่อสัญลักษณ์เล็กบน A0 → วงกลมกลวงถูกเส้นขอบอุดจนดูเป็นจุดทึบ
-    min_lw = float(os.environ.get("PDF_MIN_LINEWEIGHT_MM", "0.02"))
+    """เส้นบางมาก — สัญลักษณ์ไฟฟ้ากลวงต้องไม่ถูกอุดด้วยเส้นหนา"""
+    min_lw = float(os.environ.get("PDF_MIN_LINEWEIGHT_MM", "0.01"))
     kwargs = dict(
         background_policy=BackgroundPolicy.WHITE,
         color_policy=ColorPolicy.COLOR,
         text_policy=TextPolicy.IGNORE,
         min_lineweight=min_lw,
+        lineweight_scaling=float(os.environ.get("PDF_LINEWEIGHT_SCALING", "0.35")),
+        max_lineweight=float(os.environ.get("PDF_MAX_LINEWEIGHT_MM", "0.25")),
     )
-    # ลดสเกลความหนาเส้นถ้าไลบรารีรองรับ (กันเส้น CAD เดิมที่ตั้งหนาไว้บวมบนกระดาษ)
-    for key, val in (
-        ("lineweight_scaling", float(os.environ.get("PDF_LINEWEIGHT_SCALING", "0.55"))),
-        ("max_lineweight", float(os.environ.get("PDF_MAX_LINEWEIGHT_MM", "0.35"))),
-    ):
-        kwargs[key] = val
     if LineweightPolicy is not None:
-        # ABSOLUTE = ใช้ค่า lineweight จริงบนกระดาษ (พร้อม min/max)
         try:
             kwargs["lineweight_policy"] = LineweightPolicy.ABSOLUTE
         except Exception:
@@ -284,7 +314,6 @@ def build_draw_config() -> Configuration:
     try:
         return Configuration(**kwargs)
     except TypeError:
-        # เวอร์ชันเก่าไม่รู้จักบางคีย์ → เหลือเฉพาะที่จำเป็น
         return Configuration(
             background_policy=BackgroundPolicy.WHITE,
             color_policy=ColorPolicy.COLOR,
@@ -328,6 +357,10 @@ def main(src: str, dst: str, texts_out: str = "") -> None:
         except Exception:
             pass
 
+    n_lw = thin_entity_lineweights(doc)
+    if n_lw:
+        print(f"ลด lineweight ที่หนาเกิน {n_lw} จุด")
+
     w = max(ext.size.x, 1e-6)
     h = max(ext.size.y, 1e-6)
     aspect = min(max(w / h, 1 / MAX_ASPECT), MAX_ASPECT)
@@ -337,7 +370,11 @@ def main(src: str, dst: str, texts_out: str = "") -> None:
         page_w, page_h = LONG_SIDE_MM * aspect, LONG_SIDE_MM
 
     cfg = build_draw_config()
-    print(f"lineweight: min={getattr(cfg, 'min_lineweight', '?')} mm")
+    print(
+        f"lineweight: min={getattr(cfg, 'min_lineweight', '?')} mm, "
+        f"scale={getattr(cfg, 'lineweight_scaling', '?')}, "
+        f"max={getattr(cfg, 'max_lineweight', '?')} mm"
+    )
     ctx = RenderContext(doc)
     backend = ezpdf.PyMuPdfBackend()
     Frontend(ctx, backend, config=cfg).draw_layout(msp, finalize=True)

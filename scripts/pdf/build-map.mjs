@@ -1,7 +1,5 @@
 /**
- * สร้างกระเบื้องแผนที่ (public/map) จากไฟล์ DWG ล่าสุดบน Google Drive — รันใน GitHub Actions ก่อน build
- *
- * env: GOOGLE_API_KEY, DRIVE_FOLDER_ID, SITE_URL, FORCE_MAP=1
+ * สร้างกระเบื้องแผนที่ (public/map) จากไฟล์ DWG ล่าสุดบน Google Drive
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -19,8 +17,8 @@ const FOLDER_MIME = 'application/vnd.google-apps.folder';
 const KEY = process.env.GOOGLE_API_KEY || '';
 const FOLDER_ID = process.env.DRIVE_FOLDER_ID || '1mP47qarQZxPF-ln5Dy7VZrJlcq0uPJ4D';
 const SITE_URL = (process.env.SITE_URL || '').replace(/\/$/, '');
-// v6: เส้นบางลง + ลด blob ของสัญลักษณ์ไฟฟ้าตอนทำ tile
-const GENERATOR_VERSION = 6;
+// v7: เส้นบางลงอีก + clamp lineweight ใน DXF
+const GENERATOR_VERSION = 7;
 const MOBILE_NAME = /mobile|mob\b|phone|เล็ก|มือถือ|_mobile/i;
 
 const THAI_MONTHS = {
@@ -137,14 +135,15 @@ async function main() {
   console.log('DWG → DXF...');
   await dwgToDxf(dwg, dxf);
 
-  console.log('DXF → PDF (เส้นบางลง)...');
+  console.log('DXF → PDF (เส้นบาง gen7)...');
   execFileSync('python3', [path.join(HERE, 'dxf_to_pdf.py'), dxf, pdf, texts], {
     stdio: 'inherit',
     env: {
       ...process.env,
-      PDF_MIN_LINEWEIGHT_MM: process.env.PDF_MIN_LINEWEIGHT_MM || '0.02',
-      PDF_LINEWEIGHT_SCALING: process.env.PDF_LINEWEIGHT_SCALING || '0.55',
-      PDF_MAX_LINEWEIGHT_MM: process.env.PDF_MAX_LINEWEIGHT_MM || '0.35',
+      PDF_MIN_LINEWEIGHT_MM: process.env.PDF_MIN_LINEWEIGHT_MM || '0.01',
+      PDF_LINEWEIGHT_SCALING: process.env.PDF_LINEWEIGHT_SCALING || '0.35',
+      PDF_MAX_LINEWEIGHT_MM: process.env.PDF_MAX_LINEWEIGHT_MM || '0.25',
+      PDF_ENTITY_MAX_LW: process.env.PDF_ENTITY_MAX_LW || '25',
     },
   });
 

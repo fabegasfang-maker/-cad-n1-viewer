@@ -36,6 +36,7 @@
       }
       #map { position: absolute; inset: 0; background: #fff; }
       .leaflet-container { background: #fff; font: inherit; -webkit-tap-highlight-color: transparent; }
+      /* คมขึ้นตอนซูมเกิน native (เบราว์เซอร์จะสเกล tile) */
       .leaflet-tile { image-rendering: auto; }
 
       #bar {
@@ -80,7 +81,7 @@
       .leaflet-bottom.leaflet-right { margin-bottom: env(safe-area-inset-bottom); margin-right: env(safe-area-inset-right); }
       .leaflet-bar a { width: 40px; height: 40px; line-height: 40px; font-size: 22px; }
 
-      /* ป้ายข้อความคม (DOM) ตอนซูมใกล้ — ไม่เบลอเหมือน tile */
+      /* ป้ายคมเฉพาะตอนซูมเกิน native (tile เริ่มเบลอ) — ไม่ทับข้อความใน tile */
       .cad-label {
         background: transparent !important;
         border: none !important;
@@ -225,10 +226,10 @@
           if (meta.sourceName) parts.push(meta.sourceName.replace(/\.(dwg|dxf)$/i, ''));
           if (parts.length) { info.textContent = parts.join(' · '); info.hidden = false; }
 
-          setupSearchAndLabels(map, Z, ll, W, H);
+          setupSearchAndLabels(map, Z, ll);
         }
 
-        function setupSearchAndLabels(map, Z, ll, W, H) {
+        function setupSearchAndLabels(map, Z, ll) {
           var q = document.getElementById('q');
           var list = document.getElementById('results');
           var items = null, loading = false, marker = null;
@@ -250,11 +251,9 @@
                     fs: it[3] || 10
                   };
                 });
-                // เรียงใหญ่ก่อน เพื่อป้ายสำคัญโผล่ก่อนเมื่อจำกัดจำนวน
                 items.sort(function (a, b) { return b.fs - a.fs; });
                 q.disabled = false;
                 if (q.value) render();
-                scheduleLabels();
               })
               .catch(function () { q.placeholder = 'ค้นหาใช้ไม่ได้ในขณะนี้'; })
               .then(function () { loading = false; });
@@ -303,11 +302,11 @@
             list.hidden = true;
             q.blur();
             var p = ll(it.x, it.y);
-            map.flyTo(p, Math.min(Z + 0.5, Z), { duration: 0.8 });
+            // ไปที่ระดับ native สูงสุด (ไม่ overzoom) เพื่อไม่ทับข้อความ
+            map.flyTo(p, Z, { duration: 0.8 });
             if (marker) map.removeLayer(marker);
             marker = L.circleMarker(p, { radius: 26, color: '#dc2626', weight: 3, fillColor: '#dc2626', fillOpacity: 0.08 }).addTo(map);
             marker.on('click', function () { map.removeLayer(marker); marker = null; });
-            setTimeout(scheduleLabels, 900);
           }
 
           function scheduleLabels() {
@@ -319,8 +318,9 @@
             labelLayer.clearLayers();
             if (!items || !items.length) return;
             var z = map.getZoom();
-            // แสดงป้ายเมื่อซูมใกล้ระดับ native สูงสุด (และ overzoom)
-            if (z < Z - 1.25) return;
+            // สำคัญ: แสดงป้าย HTML เฉพาะตอนซูมเกิน native (tile ถูกขยายแล้วเบลอ)
+            // ถ้าระดับ <= Z ข้อความอยู่ใน tile อยู่แล้ว — ห้ามทับ (เคยทำให้ตัวหนังสือซ้อนกัน)
+            if (z <= Z + 0.15) return;
 
             var b = map.getBounds();
             var sw = map.project(b.getSouthWest(), Z);
@@ -330,9 +330,8 @@
             var minY = Math.min(sw.y, ne.y) - 40;
             var maxY = Math.max(sw.y, ne.y) + 40;
 
-            // ยิ่งซูมใกล้ ยิ่งยอมรับตัวหนังสือเล็ก
-            var minFs = z >= Z + 0.5 ? 6 : (z >= Z - 0.25 ? 9 : 12);
-            var maxLabels = z >= Z ? 220 : 120;
+            var minFs = 8;
+            var maxLabels = 180;
             var scale = Math.pow(2, z - Z);
             var shown = 0;
 
@@ -340,10 +339,9 @@
               var it = items[i];
               if (it.fs < minFs) continue;
               if (it.x < minX || it.x > maxX || it.y < minY || it.y > maxY) continue;
-              // ตัดข้อความยาวมาก
               if (it.t.length > 60 && it.fs < 14) continue;
 
-              var fontPx = Math.max(10, Math.min(28, it.fs * scale * 0.85));
+              var fontPx = Math.max(11, Math.min(30, it.fs * scale * 0.9));
               var icon = L.divIcon({
                 className: 'cad-label',
                 html: '<span style="font-size:' + fontPx.toFixed(1) + 'px">' + esc(it.t) + '</span>',
