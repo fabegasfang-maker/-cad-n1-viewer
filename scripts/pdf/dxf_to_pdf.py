@@ -428,6 +428,7 @@ def prepare_entities_for_white_bg(doc, msp) -> None:
 
             if t in ("HATCH", "SOLID", "TRACE") and _is_white_mask_fill(doc, e):
                 if not _drop_mask(e):
+                    preserved_masks += 1
                     continue
                 try:
                     container.delete_entity(e)
