@@ -54,9 +54,22 @@ def render(doc, win, mm_per_unit, out_png):
                 keep.add(e.dxf.handle)
         except Exception:
             pass
+    if os.environ.get("DIAG_LIST") and "list_done" not in render.__dict__:
+        render.list_done = True
+        for e in msp:
+            if e.dxf.handle in keep:
+                extra = e.dxf.name if e.dxftype() == "INSERT" else ""
+                print("   ·", e.dxftype(), "layer=", e.dxf.layer, "color=", e.dxf.get("color", 256), "tc=", e.dxf.get("true_color"), extra)
+                if e.dxftype() == "INSERT":
+                    try:
+                        for x in doc.blocks.get(e.dxf.name):
+                            print("        └", x.dxftype(), "layer=", x.dxf.layer, "color=", x.dxf.get("color", 256),
+                                  "tc=", x.dxf.get("true_color"), "solid=" + str(getattr(x.dxf, "solid_fill", "")) if x.dxftype() == "HATCH" else "")
+                    except Exception:
+                        pass
     backend = ezpdf.PyMuPdfBackend()
     Frontend(RenderContext(doc), backend, config=D.build_draw_config()).draw_layout(
-        msp, finalize=True, filter_func=lambda e: e.dxf.handle in keep
+        msp, finalize=True, filter_func=lambda e: (e.dxf.handle is None) or (e.dxf.handle in keep)
     )
     page = layout.Page((win[2] - win[0]) * mm_per_unit, (win[3] - win[1]) * mm_per_unit, layout.Units.mm,
                        margins=layout.Margins.all(0))
