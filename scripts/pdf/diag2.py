@@ -54,11 +54,25 @@ def render(doc, win, mm_per_unit, out_png):
                 keep.add(e.dxf.handle)
         except Exception:
             pass
+    order = {e.dxf.handle: i for i, e in enumerate(msp)}
     if os.environ.get("DIAG_LIST") and "list_done" not in render.__dict__:
         render.list_done = True
         for e in msp:
             if e.dxf.handle in keep:
                 extra = e.dxf.name if e.dxftype() == "INSERT" else ""
+                idx = order.get(e.dxf.handle, -1)
+                if e.dxftype() == "LWPOLYLINE":
+                    pts = list(e.get_points("xyseb"))
+                    ws = sorted({round(max(a, b), 3) for _, _, a, b, _ in pts} | {round(e.dxf.get("const_width", 0), 3)})
+                    xs = [q[0] for q in pts]; ys = [q[1] for q in pts]
+                    extra = (f"closed={e.closed} widths={ws} n={len(pts)} "
+                             f"bbox=({min(xs):.1f},{min(ys):.1f})-({max(xs):.1f},{max(ys):.1f}) "
+                             f"lw={e.dxf.get('lineweight')} lt={e.dxf.get('linetype')}")
+                elif e.dxftype() == "INSERT":
+                    extra += f" at=({e.dxf.insert.x:.1f},{e.dxf.insert.y:.1f}) scale=({e.dxf.get('xscale',1):.2f},{e.dxf.get('yscale',1):.2f}) rot={e.dxf.get('rotation',0):.0f}"
+                elif e.dxftype() == "HATCH":
+                    extra = f"solid={e.dxf.solid_fill} pattern={e.dxf.pattern_name} paths={len(e.paths)}"
+                print("   #%d" % idx, end="")
                 print("   ·", e.dxftype(), "layer=", e.dxf.layer, "color=", e.dxf.get("color", 256), "tc=", e.dxf.get("true_color"), extra)
                 if e.dxftype() == "INSERT":
                     try:
