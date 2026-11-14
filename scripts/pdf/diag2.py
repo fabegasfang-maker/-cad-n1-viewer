@@ -68,9 +68,19 @@ def render(doc, win, mm_per_unit, out_png):
                     except Exception:
                         pass
     backend = ezpdf.PyMuPdfBackend()
-    Frontend(RenderContext(doc), backend, config=D.build_draw_config()).draw_layout(
-        msp, finalize=True, filter_func=lambda e: (e.dxf.handle is None) or (e.dxf.handle in keep)
-    )
+    ents = [e for e in msp if e.dxf.handle in keep]
+    if os.environ.get("PDF_HATCH_BOTTOM", "1") != "0":  # เหมือน pipeline: HATCH/SOLID/TRACE ไว้ล่างสุด
+        bg = {"HATCH", "SOLID", "TRACE"}
+        ents = [e for e in ents if e.dxftype() in bg] + [e for e in ents if e.dxftype() not in bg]
+    import dataclasses
+    from ezdxf.addons.drawing.config import BackgroundPolicy
+    cfg = D.build_draw_config()
+    print("   config:", cfg.background_policy, cfg.color_policy, cfg.lineweight_scaling, cfg.min_lineweight)
+    cfg = dataclasses.replace(cfg, background_policy=BackgroundPolicy.OFF)
+    fe = Frontend(RenderContext(doc), backend, config=cfg)
+    backend.set_background("#FFFFFFFF")  # draw_entities ไม่ตั้งพื้นหลังเอง (draw_layout ตั้งให้) → ตั้งขาวเอง
+    fe.draw_entities(ents)
+    backend.finalize()
     page = layout.Page((win[2] - win[0]) * mm_per_unit, (win[3] - win[1]) * mm_per_unit, layout.Units.mm,
                        margins=layout.Margins.all(0))
     rep = backend.get_replay(page, settings=layout.Settings(fit_page=True), render_box=wb)
@@ -87,7 +97,7 @@ def main(src, out_dir):
     os.makedirs(out_dir, exist_ok=True)
     D.ezfonts.build_system_font_cache()
     wins = [
-        (os.environ.get("DIAG_KEY", "CMD03VS-105"), os.environ.get("DIAG_NEAR", "ต้นพยอม"), 130, 80, "sw"),
+        (os.environ.get("DIAG_KEY", "CMD03VS-105"), os.environ.get("DIAG_NEAR", "ต้นพยอม"), float(os.environ.get("DIAG_W", "130")), float(os.environ.get("DIAG_H", "80")), "sw"),
         ("CMD04VS-120", "", 700, 440, "wide"),
     ]
     centers = None
@@ -116,6 +126,18 @@ def main(src, out_dir):
                 c = min(cand, key=lambda p: (p[0] - ref[0][0]) ** 2 + (p[1] - ref[0][1]) ** 2) if ref else cand[0]
                 centers.append((c, W, H, tag))
                 print("window", tag, "center", (round(c[0]), round(c[1])))
+        if name == VARIANTS[0][0]:
+            print("$FILLMODE =", doc.header.get("$FILLMODE"))
+            for bn in ("SF6OL", "SF6CL"):
+                try:
+                    for x in doc.blocks.get(bn):
+                        if x.dxftype() == "LWPOLYLINE":
+                            print(f"  {bn} LWPOLYLINE closed={x.closed} const_width={x.dxf.get('const_width')} "
+                                  f"pts={list(x.get_points('xyseb'))[:6]} lw={x.dxf.get('lineweight')} layer={x.dxf.layer}")
+                        elif x.dxftype() != "LINE":
+                            print(f"  {bn} {x.dxftype()}")
+                except Exception as ex:
+                    print("  block", bn, ex)
         D.prepare_entities_for_white_bg(doc, msp)
         for c, W, H, tag in centers:
             win = (c[0] - W * 0.5, c[1] - H * 0.5, c[0] + W * 0.5, c[1] + H * 0.5)
