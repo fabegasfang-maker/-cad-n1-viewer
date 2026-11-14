@@ -27,13 +27,47 @@ LINE_BOOST_MAX = float(os.environ.get("TILE_LINE_BOOST_MAX", "2.35"))
 
 _doc = None
 _dl = None
+_dl_hi = None  # display list ของระดับซูมสูงสุด (เส้นบางลง)
 _cfg = None
+# ตัวแปลง PDF ล็อกความกว้างเส้นต่ำสุดไว้ที่ 0.1pt ซึ่งที่ซูมสูงสุดหนา ~4px จนสัญลักษณ์เล็ก (กว้าง ~25px) กลายเป็นก้อนทึบ
+# → เฉพาะระดับซูมสูงสุด ลดความกว้างเส้นใน PDF ลง (1.0 = ไม่ลด)
+HI_STROKE_FACTOR = float(os.environ.get("TILE_MAXZOOM_STROKE_FACTOR", "0.35"))
+
+
+def _thin_strokes_doc(pdf_path, factor):
+    """สำเนา PDF ที่ความกว้างเส้นเล็ก (<=0.3pt) ถูกคูณด้วย factor"""
+    import re
+
+    d = mu.open(pdf_path)
+    pg = d[0]
+    pg.clean_contents()
+    xr = pg.get_contents()
+    if len(xr) != 1:
+        return None
+    c = pg.read_contents()
+    pat = re.compile(rb"(?<![\w.])(\d*\.?\d+) w\b")
+
+    def sub(m):
+        w = float(m.group(1))
+        return b"%.4f w" % (w * factor) if 0 < w <= 0.3 else m.group(0)
+
+    d.update_stream(xr[0], pat.sub(sub, c))
+    return d
 
 
 def _init(pdf_path, cfg):
-    global _doc, _dl, _cfg
+    global _doc, _dl, _dl_hi, _cfg
     _doc = mu.open(pdf_path)
     _dl = _doc[0].get_displaylist()
+    _dl_hi = _dl
+    if HI_STROKE_FACTOR < 0.999:
+        try:
+            thin = _thin_strokes_doc(pdf_path, HI_STROKE_FACTOR)
+            if thin is not None:
+                globals()["_doc_hi"] = thin  # ต้องถือ doc ไว้ไม่ให้ถูกเก็บ
+                _dl_hi = thin[0].get_displaylist()
+        except Exception as ex:
+            print(f"เส้นบางที่ซูมสูงสุดใช้ไม่ได้ ({type(ex).__name__}: {ex}) → ใช้เส้นปกติ", flush=True)
     _cfg = cfg
 
 
@@ -67,7 +101,7 @@ def render_chunk(task):
         (px0_r + cw_r) / scale_r + pad,
         (py0_r + ch_r) / scale_r + pad,
     )
-    pix = _dl.get_pixmap(matrix=mu.Matrix(scale_r, scale_r), clip=area, alpha=False)
+    pix = (_dl_hi if levels_out == 0 else _dl).get_pixmap(matrix=mu.Matrix(scale_r, scale_r), clip=area, alpha=False)
     src = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, 3)
     arr_r = np.full((ch_r, cw_r, 3), 255, dtype=np.uint8)
     ox, oy = pix.x - px0_r, pix.y - py0_r
