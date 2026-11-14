@@ -46,6 +46,9 @@ def _is_valid_group_code(line: bytes) -> bool:
         return False
 
 
+_BAD_ESC = re.compile(rb"\\U\+(?![0-9A-Fa-f]{4})|\\M\+(?![0-9A-Fa-f]{5})")
+
+
 def sanitize_dxf(src: str, dst: str) -> int:
     with open(src, "rb") as f:
         lines = f.read().split(b"\n")
@@ -70,8 +73,12 @@ def sanitize_dxf(src: str, dst: str) -> int:
         else:
             fixed += 1
             i += 1
+    data = b"\n".join(out) + b"\n"
+    # รหัส unicode แบบ \U+XXXX / \M+XXXXX ที่เลขไม่ครบ (LibreDWG แปลงข้อความเสียบางตัว) ทำให้ ezdxf พังตอนถอดรหัส → ตัดทิ้ง
+    data, n_bad = _BAD_ESC.subn(b"", data)
+    fixed += n_bad
     with open(dst, "wb") as f:
-        f.write(b"\n".join(out) + b"\n")
+        f.write(data)
     return fixed
 
 
