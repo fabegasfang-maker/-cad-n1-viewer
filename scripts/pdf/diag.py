@@ -91,8 +91,13 @@ def render(doc, sel, cfg, win, mm_per_unit, out_png):
     box = BoundingBox2d([(x0, y0), (x1, y1)])
     replay = backend.get_replay(page, settings=layout.Settings(fit_page=True), render_box=box)
     d = mu.open(stream=replay.get_pdf_bytes(), filetype="pdf")
-    pix = d[0].get_pixmap(matrix=mu.Matrix(8, 8), alpha=False)
-    pix.save(out_png)
+    pix = d[0].get_pixmap(matrix=mu.Matrix(14, 14), alpha=True)
+    from PIL import Image as _I
+
+    im = _I.frombytes("RGBA", (pix.width, pix.height), pix.samples)
+    bg = _I.new("RGBA", im.size, "white")  # พื้นโปร่งใส → ลงพื้นขาวให้เหมือนแผนที่จริง
+    bg.alpha_composite(im)
+    bg.convert("RGB").save(out_png)
     print(f"  → {os.path.basename(out_png)} ({pix.width}x{pix.height})")
 
 
