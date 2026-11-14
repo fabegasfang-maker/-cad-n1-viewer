@@ -542,10 +542,41 @@ def prepare_entities_for_white_bg(doc, msp) -> None:
     except Exception:
         pass
 
+    # สัญลักษณ์ส่วนใหญ่เป็น block: พื้นทึบ (เช่น กล่องเขียว SF6) ที่อยู่ท้าย block จะทับเส้นสัญลักษณ์ข้างใน
+    # → ย้ายพื้นทึบไปไว้ต้นทุก block (ลำดับเดิมของเอนทิตีอื่นคงเดิม)
+    n_block_reordered = fills_to_bottom_in_blocks(doc)
+
     print(
         f"ปรับแต่งผัง: ลบ WIPEOUT/พื้นขาวบังเส้น {removed_masks} ชิ้น, "
-        f"ซ่อมเส้นความยาวศูนย์ {fixed_geom} ชิ้น, ปรับสีอ่อน {darkened} จุด"
+        f"ซ่อมเส้นความยาวศูนย์ {fixed_geom} ชิ้น, ปรับสีอ่อน {darkened} จุด, "
+        f"ย้ายพื้นทึบลงล่างใน block {n_block_reordered} บล็อก"
     )
+
+
+def fills_to_bottom_in_blocks(doc) -> int:
+    """ย้าย HATCH/SOLID/TRACE ไปต้นของแต่ละ block (sort แบบ stable) คืนจำนวน block ที่ลำดับเปลี่ยน
+
+    ปิดได้ด้วย PDF_HATCH_BOTTOM=0 (ใช้สวิตช์เดียวกับลำดับวาดใน Model space)
+    """
+    if os.environ.get("PDF_HATCH_BOTTOM", "1") == "0":
+        return 0
+    bg_types = {"HATCH", "SOLID", "TRACE"}
+    changed = 0
+    for b in doc.blocks:
+        name = (b.name or "").upper()
+        if name.startswith("*MODEL_SPACE") or name.startswith("*PAPER_SPACE"):
+            continue
+        try:
+            ents = b.entity_space.entities
+            if not any(e.dxftype() in bg_types for e in ents):
+                continue
+            before = [id(e) for e in ents]
+            ents.sort(key=lambda e: 0 if e.dxftype() in bg_types else 1)  # stable
+            if before != [id(e) for e in ents]:
+                changed += 1
+        except Exception:
+            continue
+    return changed
 
 
 def safe_modelspace_extents(msp):
