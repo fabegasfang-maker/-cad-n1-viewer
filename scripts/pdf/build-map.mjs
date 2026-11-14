@@ -105,7 +105,8 @@ async function main() {
     execFileSync('python3', [path.join(HERE, 'diag.py'), dxf, process.env.DIAG_DIR], { stdio: 'inherit' });
     return;
   }
-  execFileSync('python3', [path.join(HERE, 'dxf_to_pdf.py'), dxf, pdf, texts], {
+  // use runner so open/close status blocks keep internal switch geometry
+  execFileSync('python3', [path.join(HERE, 'run_dxf_to_pdf.py'), dxf, pdf, texts], {
     stdio: 'inherit',
     env: {
       ...process.env,
