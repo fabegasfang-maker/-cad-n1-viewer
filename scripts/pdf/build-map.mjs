@@ -159,7 +159,7 @@ async function main() {
     env: {
       ...process.env,
       TILE_TARGET_TEXT_PX: process.env.TILE_TARGET_TEXT_PX || '14',
-      TILE_MAX_WIDTH_PX: process.env.TILE_MAX_WIDTH_PX || '65536',
+      TILE_MAX_WIDTH_PX: process.env.TILE_MAX_WIDTH_PX || '131072',
       TILE_WEBP_LOSSLESS: process.env.TILE_WEBP_LOSSLESS || '1',
       TILE_LINE_BOOST_BASE: process.env.TILE_LINE_BOOST_BASE || '1.25',
       TILE_LINE_BOOST_MAX: process.env.TILE_LINE_BOOST_MAX || '2.35',
