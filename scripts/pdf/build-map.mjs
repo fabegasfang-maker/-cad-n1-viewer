@@ -137,7 +137,7 @@ async function main() {
 
   if (process.env.DIAG_DIR) {
     console.log('วินิจฉัย: เรนเดอร์ภาพเทียบ...');
-    execFileSync('python3', [path.join(HERE, 'diag.py'), dxf, process.env.DIAG_DIR], { stdio: 'inherit' });
+    execFileSync('python3', [path.join(HERE, process.env.DIAG_SCRIPT || 'diag.py'), dxf, process.env.DIAG_DIR], { stdio: 'inherit' });
     return;
   }
 

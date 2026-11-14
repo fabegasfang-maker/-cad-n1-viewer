@@ -1,0 +1,52 @@
+name: Diagnose masks and draw order
+
+on:
+  workflow_dispatch:
+    inputs:
+      key:
+        description: 'ข้อความอ้างอิงจุดกึ่งกลาง'
+        default: 'CMD03VS-105'
+      near:
+        description: 'ข้อความที่อยู่ใกล้ (ถ้ามี)'
+        default: 'ต้นพยอม'
+      w:
+        default: '700'
+      h:
+        default: '440'
+
+permissions:
+  contents: write
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q fonts-thai-tlwg-ttf
+          python3 -m pip install --break-system-packages -q ezdxf pymupdf pillow numpy
+      - name: Render comparison images from newest DWG
+        env:
+          GOOGLE_API_KEY: ${{ vars.VITE_GOOGLE_API_KEY }}
+          DRIVE_FOLDER_ID: ${{ vars.DRIVE_FOLDER_ID }}
+          SITE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+          FORCE_MAP: '1'
+          DIAG_KEY: ${{ inputs.key }}
+          DIAG_NEAR: ${{ inputs.near }}
+          DIAG_W: ${{ inputs.w }}
+          DIAG_H: ${{ inputs.h }}
+          DIAG_SCRIPT: diag2.py
+          DIAG_DIR: ${{ github.workspace }}/diag-out
+        run: node scripts/pdf/build-map.mjs 2>&1 | tee diag-log.txt
+      - name: Push results to branch diag2
+        run: |
+          mkdir -p diag-out && cp diag-log.txt diag-out/log.txt
+          cd diag-out
+          git init -q -b diag2
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "diagnostic renders"
+          git push -q --force "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" diag2
