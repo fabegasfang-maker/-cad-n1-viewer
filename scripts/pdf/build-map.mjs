@@ -1,6 +1,6 @@
 /**
  * สร้างกระเบื้องแผนที่ (public/map) จากไฟล์ DWG ล่าสุดบน Google Drive
- * gen16 = logic ก่อนแก้ open/close status-clarify (เทียบเท่า gen14)
+ * gen18 = preserve small white masks used as switch-symbol backgrounds
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -18,7 +18,7 @@ const FOLDER_MIME = 'application/vnd.google-apps.folder';
 const KEY = process.env.GOOGLE_API_KEY || '';
 const FOLDER_ID = process.env.DRIVE_FOLDER_ID || '1mP47qarQZxPF-ln5Dy7VZrJlcq0uPJ4D';
 const SITE_URL = (process.env.SITE_URL || '').replace(/\/$/, '');
-const GENERATOR_VERSION = 17;
+const GENERATOR_VERSION = 18;
 const MOBILE_NAME = /mobile|mob\b|phone|เล็ก|มือถือ|_mobile/i;
 
 const THAI_MONTHS = {
@@ -141,7 +141,7 @@ async function main() {
     return;
   }
 
-  console.log('DXF → PDF (gen16 = pre status-clarify)...');
+  console.log('DXF → PDF (gen18 = preserve small symbol masks)...');
   execFileSync('python3', [path.join(HERE, 'dxf_to_pdf.py'), dxf, pdf, texts], {
     stdio: 'inherit',
     env: {

@@ -361,7 +361,7 @@ def _adjust_stroke_rgb_for_white(r: int, g: int, b: int):
 
 
 def _mask_mode() -> str:
-    return os.environ.get("PDF_MASKS", "delete").strip().lower()
+    return os.environ.get("PDF_MASKS", "small").strip().lower()
 
 
 def _mask_is_small(e) -> bool:
@@ -389,6 +389,7 @@ def prepare_entities_for_white_bg(doc, msp) -> None:
     """ลบ WIPEOUT/พื้นขาวบังเส้น, ซ่อมเส้น Polyline ความยาวศูนย์ที่ทำให้ TraceBuilder พัง, และปรับสีบนพื้นขาว"""
     stroke_types = {"LINE", "LWPOLYLINE", "POLYLINE", "ARC", "CIRCLE", "ELLIPSE", "SPLINE", "LEADER"}
     removed_masks = 0
+    preserved_masks = 0
     fixed_geom = 0
     darkened = 0
 
@@ -411,11 +412,12 @@ def prepare_entities_for_white_bg(doc, msp) -> None:
             pass
 
     def process_container(container):
-        nonlocal removed_masks, fixed_geom, darkened
+        nonlocal removed_masks, preserved_masks, fixed_geom, darkened
         for e in list(container):
             t = e.dxftype()
             if t == "WIPEOUT":
                 if not _drop_mask(e):
+                    preserved_masks += 1
                     continue
                 try:
                     container.delete_entity(e)
@@ -543,7 +545,8 @@ def prepare_entities_for_white_bg(doc, msp) -> None:
         pass
 
     print(
-        f"ปรับแต่งผัง: ลบ WIPEOUT/พื้นขาวบังเส้น {removed_masks} ชิ้น, "
+        f"ปรับแต่งผัง: mask_mode={_mask_mode()}, เก็บพื้นรองสัญลักษณ์ {preserved_masks} ชิ้น, "
+        f"ลบ WIPEOUT/พื้นขาวบังเส้น {removed_masks} ชิ้น, "
         f"ซ่อมเส้นความยาวศูนย์ {fixed_geom} ชิ้น, ปรับสีอ่อน {darkened} จุด"
     )
 
