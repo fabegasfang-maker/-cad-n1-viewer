@@ -85,6 +85,7 @@ def render(doc, sel, cfg, win, mm_per_unit, out_png):
     x0, y0, x1, y1 = win
     backend = ezpdf.PyMuPdfBackend()
     fe = Frontend(RenderContext(doc), backend, config=cfg)
+    backend.set_background("#ffffffff")  # draw_entities ไม่ลงพื้นหลังให้เอง (draw_layout เท่านั้น) → ไม่งั้นพื้นดำ
     fe.draw_entities(sel)
     backend.finalize()
     page = layout.Page((x1 - x0) * mm_per_unit, (y1 - y0) * mm_per_unit, layout.Units.mm, margins=layout.Margins.all(0))
