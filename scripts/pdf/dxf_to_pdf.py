@@ -605,7 +605,7 @@ def thin_entity_lineweights(doc) -> int:
 
 
 def build_draw_config() -> Configuration:
-    min_lw_mm = float(os.environ.get("PDF_MIN_LINEWEIGHT_MM", "0.05"))
+    min_lw_mm = float(os.environ.get("PDF_MIN_LINEWEIGHT_MM", "0.02"))
     min_lw_ez = max(0.45, min_lw_mm * (300.0 / 25.4))
     lw_scale = float(os.environ.get("PDF_LINEWEIGHT_SCALING", "0"))
 

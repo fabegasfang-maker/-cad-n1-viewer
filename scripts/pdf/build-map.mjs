@@ -18,7 +18,7 @@ const FOLDER_MIME = 'application/vnd.google-apps.folder';
 const KEY = process.env.GOOGLE_API_KEY || '';
 const FOLDER_ID = process.env.DRIVE_FOLDER_ID || '1mP47qarQZxPF-ln5Dy7VZrJlcq0uPJ4D';
 const SITE_URL = (process.env.SITE_URL || '').replace(/\/$/, '');
-const GENERATOR_VERSION = 16;
+const GENERATOR_VERSION = 17;
 const MOBILE_NAME = /mobile|mob\b|phone|เล็ก|มือถือ|_mobile/i;
 
 const THAI_MONTHS = {
@@ -146,7 +146,7 @@ async function main() {
     stdio: 'inherit',
     env: {
       ...process.env,
-      PDF_MIN_LINEWEIGHT_MM: process.env.PDF_MIN_LINEWEIGHT_MM || '0.09',
+      PDF_MIN_LINEWEIGHT_MM: process.env.PDF_MIN_LINEWEIGHT_MM || '0.02',
       PDF_LINEWEIGHT_SCALING: process.env.PDF_LINEWEIGHT_SCALING || '0',
       PDF_ENTITY_MAX_LW: process.env.PDF_ENTITY_MAX_LW || '30',
     },
