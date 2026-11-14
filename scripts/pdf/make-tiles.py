@@ -19,7 +19,7 @@ TILE = 256
 CHUNK_TILES = 8
 TARGET_TEXT_PX = float(os.environ.get("TILE_TARGET_TEXT_PX", "14"))
 MIN_WIDTH_PX = int(os.environ.get("TILE_MIN_WIDTH_PX", "12288"))
-MAX_WIDTH_PX = int(os.environ.get("TILE_MAX_WIDTH_PX", "65536"))
+MAX_WIDTH_PX = int(os.environ.get("TILE_MAX_WIDTH_PX", "131072"))
 WEBP_QUALITY = int(os.environ.get("TILE_WEBP_QUALITY", "90"))
 WEBP_LOSSLESS = os.environ.get("TILE_WEBP_LOSSLESS", "1") == "1"
 LINE_BOOST_BASE = float(os.environ.get("TILE_LINE_BOOST_BASE", "1.25"))
