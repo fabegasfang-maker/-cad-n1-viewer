@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [main, experiment-pdf-fidelity]
   workflow_dispatch:
   schedule:
     # ตรวจไฟล์ DWG ใหม่บน Drive ทุก 30 นาที แล้วสร้างกระเบื้องแผนที่ใหม่เมื่อมีการเปลี่ยนแปลง
