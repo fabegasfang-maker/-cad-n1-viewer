@@ -4,6 +4,7 @@
  */
 import {
   downloadPublicDriveCadToDevice,
+  resolvePublicDriveCadMeta,
   DRIVE_API_KEY,
 } from './services/drivePublic';
 
@@ -46,29 +47,72 @@ export function parseDriveId(input: string): string | null {
   return /^[A-Za-z0-9_-]{10,}$/.test(s) ? s : null;
 }
 
-// ---------- วันที่ PDF ที่เรนเดอร์ล่าสุด (ใต้หัวข้อ) ----------
+// ---------- วันที่ไฟล์ใต้ปุ่มทั้ง 3 ----------
 const fileDateEl = document.getElementById('file-date') as HTMLElement | null;
 
+function setStamp(id: string, text: string) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
+}
+
+function stripExt(name?: string): string {
+  return name ? String(name).replace(/\.(dwg|dxf)$/i, '') : '';
+}
+
+/** ข้อมูลไฟล์ต้นทางจากรอบเรนเดอร์ PDF (map/meta.json) ใช้เป็นค่าสำรองของ CAD/ดาวน์โหลดด้วย */
+let pdfSource: { name: string; modified: string } | null = null;
+
 async function refreshLatestFileDate() {
-  if (!fileDateEl) return;
-  fileDateEl.textContent = 'กำลังตรวจสอบแผนผัง PDF ล่าสุด…';
+  if (fileDateEl) fileDateEl.textContent = 'กำลังตรวจสอบแผนผัง PDF ล่าสุด…';
+  setStamp('stamp-pdf', 'กำลังตรวจสอบวันเวลา…');
+  setStamp('stamp-cad', 'กำลังตรวจสอบวันเวลา…');
+  setStamp('stamp-download', 'กำลังตรวจสอบวันเวลา…');
+
+  // 1) PDF: วันเวลาที่เรนเดอร์ PDF/กระเบื้องล่าสุด (map/meta.json) ไม่ใช่วันที่ไฟล์บน Drive
   try {
-    // วันที่จากรอบเรนเดอร์ PDF/กระเบื้องล่าสุด (map/meta.json) ไม่ใช่วันที่ไฟล์บน Drive
     const res = await fetch('map/meta.json', { cache: 'no-cache' });
     if (!res.ok) throw new Error('no meta');
     const meta = await res.json();
-    const when = formatModifiedTh(meta.generatedAt || meta.sourceModified);
-    const name = meta.sourceName ? String(meta.sourceName).replace(/\.dwg$/i, '') : '';
-    if (when && name) {
-      fileDateEl.textContent = `PDF ล่าสุด: ${when}`;
-      fileDateEl.title = name;
-    } else if (when) {
-      fileDateEl.textContent = `PDF ล่าสุด: ${when}`;
-    } else {
-      fileDateEl.textContent = 'ยังไม่พบวันที่เรนเดอร์ PDF';
+    const rendered = formatModifiedTh(meta.generatedAt);
+    const srcWhen = formatModifiedTh(meta.sourceModified);
+    const name = stripExt(meta.sourceName);
+    pdfSource = name || srcWhen ? { name, modified: srcWhen } : null;
+    if (fileDateEl) {
+      fileDateEl.textContent = rendered ? `PDF ล่าสุด: ${rendered}` : 'ยังไม่พบวันที่เรนเดอร์ PDF';
+      if (name) fileDateEl.title = name;
     }
+    const parts = [
+      name ? `จากไฟล์ ${name}` : '',
+      srcWhen ? `(ไฟล์ต้นฉบับอัปเดต ${srcWhen})` : '',
+    ].filter(Boolean);
+    setStamp(
+      'stamp-pdf',
+      rendered
+        ? `เรนเดอร์ PDF เมื่อ ${rendered}${parts.length ? ' · ' + parts.join(' ') : ''}`
+        : 'ยังไม่พบวันเวลาที่เรนเดอร์ PDF'
+    );
   } catch {
-    fileDateEl.textContent = 'ยังไม่พบวันที่เรนเดอร์ PDF';
+    if (fileDateEl) fileDateEl.textContent = 'ยังไม่พบวันที่เรนเดอร์ PDF';
+    setStamp('stamp-pdf', 'ยังไม่พบวันเวลาที่เรนเดอร์ PDF');
+  }
+
+  // 2) CAD และ ดาวน์โหลด: ไฟล์ .dwg ล่าสุดบน Google Drive (ไฟล์เดียวกับที่ตัวดู CAD เปิด / ปุ่มดาวน์โหลดบันทึก)
+  try {
+    if (!DRIVE_API_KEY) throw new Error('no key');
+    const meta = await resolvePublicDriveCadMeta(getFolderId(), undefined, {
+      forMobileDownload: true,
+    });
+    const when = formatModifiedTh(meta.modifiedTime);
+    const text = `ไฟล์ ${stripExt(meta.name)}${when ? ` · อัปเดตบน Drive ${when}` : ''}`;
+    setStamp('stamp-cad', text);
+    setStamp('stamp-download', text);
+  } catch {
+    // ไม่มี API key / เรียก Drive ไม่ได้ → ใช้ข้อมูลไฟล์ต้นทางจากรอบเรนเดอร์ PDF แทน
+    const text = pdfSource
+      ? `ไฟล์ ${pdfSource.name}${pdfSource.modified ? ` · อัปเดต ${pdfSource.modified}` : ''} (ตามรอบเรนเดอร์ล่าสุด)`
+      : 'ยังไม่พบวันเวลาของไฟล์';
+    setStamp('stamp-cad', text);
+    setStamp('stamp-download', text);
   }
 }
 
