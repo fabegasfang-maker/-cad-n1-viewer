@@ -349,7 +349,13 @@ def _adjust_stroke_rgb_for_white(r: int, g: int, b: int):
     if lum <= 195:
         return None
     if r > 220 and g > 220 and b < 60:
-        return (180, 120, 0)
+        # เหลือง (ฟีดเดอร์ 2): เดิมเข้มเป็นทองน้ำตาล (180,120,0) → ใช้เหลืองสว่างที่ยังเห็นบนพื้นขาว
+        # ปรับได้ด้วย PDF_YELLOW_RGB="R,G,B" (เหลืองอ่อนกว่านี้จะจางหายบนพื้นขาว)
+        try:
+            yr, yg, yb = (int(v) for v in os.environ.get("PDF_YELLOW_RGB", "255,208,0").split(","))
+            return (yr, yg, yb)
+        except Exception:
+            return (255, 208, 0)
     if max(r, g, b) - min(r, g, b) < 20:
         return (85, 85, 85)
     factor = 145.0 / max(lum, 1.0)
