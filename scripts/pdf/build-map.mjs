@@ -18,7 +18,7 @@ const FOLDER_MIME = 'application/vnd.google-apps.folder';
 const KEY = process.env.GOOGLE_API_KEY || '';
 const FOLDER_ID = process.env.DRIVE_FOLDER_ID || '1mP47qarQZxPF-ln5Dy7VZrJlcq0uPJ4D';
 const SITE_URL = (process.env.SITE_URL || '').replace(/\/$/, '');
-const GENERATOR_VERSION = 22; // 22: เส้นเหลือง (ฟีดเดอร์ 2) เป็นเหลืองสว่างแทนทองเข้ม
+const GENERATOR_VERSION = 23; // 23: ตัด polyline กว้างที่เป็นเส้นปะ (สาย 115 kV) เป็นช่วงปะเอง
 const MOBILE_NAME = /mobile|mob\b|phone|เล็ก|มือถือ|_mobile/i;
 
 const THAI_MONTHS = {

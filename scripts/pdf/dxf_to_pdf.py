@@ -548,6 +548,12 @@ def prepare_entities_for_white_bg(doc, msp) -> None:
     except Exception:
         pass
 
+    # polyline ที่มีความกว้าง ezdxf วาดเป็นแถบทึบและทิ้ง linetype (สาย 115 kV เส้นปะกลายเป็นเส้นทึบ)
+    # → ตัดเป็นช่วงปะตาม pattern เองก่อน แล้ววาดแต่ละช่วงเป็นแถบกว้างเท่าเดิม
+    n_dashed_src, n_dashes = dash_wide_polylines(doc)
+    if n_dashed_src:
+        print(f"เส้นกว้างที่เป็นเส้นปะ: ตัดเป็นช่วงปะ {n_dashed_src} เส้น -> {n_dashes} ช่วง")
+
     # สัญลักษณ์ส่วนใหญ่เป็น block: พื้นทึบ (เช่น กล่องเขียว SF6) ที่อยู่ท้าย block จะทับเส้นสัญลักษณ์ข้างใน
     # → ย้ายพื้นทึบไปไว้ต้นทุก block (ลำดับเดิมของเอนทิตีอื่นคงเดิม)
     n_block_reordered = fills_to_bottom_in_blocks(doc)
@@ -557,6 +563,92 @@ def prepare_entities_for_white_bg(doc, msp) -> None:
         f"ซ่อมเส้นความยาวศูนย์ {fixed_geom} ชิ้น, ปรับสีอ่อน {darkened} จุด, "
         f"ย้ายพื้นทึบลงล่างใน block {n_block_reordered} บล็อก"
     )
+
+
+def _single_polyline_width(e) -> float:
+    """ความกว้างคงที่ของ LWPOLYLINE (0 = ไม่มีความกว้าง หรือกว้างไม่สม่ำเสมอ → ไม่แตะ)"""
+    try:
+        const = round(float(e.dxf.get("const_width", 0.0)), 6)
+        pts = {round(float(v), 6) for _x, _y, sw, ew, _b in e.get_points("xyseb") for v in (sw, ew)}
+        if pts - {0.0}:  # มีความกว้างรายจุด: ต้องเท่ากันทุกจุด
+            return next(iter(pts)) if len(pts) == 1 and 0.0 not in pts else 0.0
+        return const if const > 0 else 0.0
+    except Exception:
+        return 0.0
+
+
+def dash_wide_polylines(doc, max_dashes_per_entity: int = 4000) -> tuple:
+    """ตัด LWPOLYLINE ที่มีความกว้างและใช้ linetype เส้นปะ ออกเป็นช่วงปะ (ezdxf ไม่ปะ polyline กว้างให้)
+
+    คืน (จำนวนเส้นที่ตัด, จำนวนช่วงที่สร้าง) ปิดได้ด้วย PDF_DASH_WIDE=0
+    """
+    if os.environ.get("PDF_DASH_WIDE", "1") == "0":
+        return 0, 0
+    from ezdxf import path as ezpath
+    from ezdxf.render import linetypes as ezlt
+
+    ctx = RenderContext(doc)
+    n_src = n_out = 0
+    for container in doc.blocks:
+        name = (container.name or "").upper()
+        if name.startswith("*PAPER_SPACE"):
+            continue
+        replaced: dict = {}
+        space = container.entity_space.entities
+        snapshot = list(space)
+        for e in snapshot:
+            try:
+                if e.dxftype() != "LWPOLYLINE" or not e.has_width:
+                    continue
+                width = _single_polyline_width(e)
+                if width <= 0:
+                    continue
+                props = ctx.resolve_all(e)
+                if len(props.linetype_pattern) < 2:
+                    continue  # เส้นทึบ
+                scale = props.linetype_scale
+                pattern = [max(v * scale, 0.1) for v in props.linetype_pattern]
+                if len(pattern) % 2:
+                    pattern.pop()
+                if not pattern or sum(pattern) <= 1e-9:
+                    continue
+                verts = list(ezpath.make_path(e).flattening(0.01, segments=16))
+                if len(verts) < 2:
+                    continue
+                segs = [(s, t) for s, t in ezlt.LineTypeRenderer(pattern).line_segments(verts) if (t - s).magnitude > 1e-9]
+                if not segs or len(segs) > max_dashes_per_entity:
+                    continue
+                attribs = {"layer": e.dxf.layer, "linetype": "Continuous", "const_width": width}
+                for key in ("color", "true_color", "lineweight"):
+                    if e.dxf.hasattr(key):
+                        attribs[key] = e.dxf.get(key)
+                new = []
+                for s, t in segs:
+                    pl = container.add_lwpolyline([(s.x, s.y), (t.x, t.y)], dxfattribs=dict(attribs))
+                    new.append(pl)
+                replaced[id(e)] = (e, new)
+                n_src += 1
+                n_out += len(new)
+            except Exception:
+                continue
+        if not replaced:
+            continue
+        for _id, (orig, _new) in replaced.items():
+            try:
+                container.delete_entity(orig)
+            except Exception:
+                pass
+        # คงตำแหน่งในลำดับการวาดเดิม: ช่วงปะที่สร้างใหม่แทนที่เส้นเดิม (ไม่ไปอยู่บนสุด)
+        final = []
+        for e in snapshot:
+            if id(e) in replaced:
+                final.extend(replaced[id(e)][1])
+            elif e.is_alive:
+                final.append(e)
+        seen = {id(x) for x in final}
+        final.extend(x for x in container.entity_space.entities if id(x) not in seen)
+        container.entity_space.entities[:] = final
+    return n_src, n_out
 
 
 def fills_to_bottom_in_blocks(doc) -> int:
