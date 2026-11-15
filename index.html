@@ -109,6 +109,19 @@
       .btn .stamp:empty { display: none; }
       .btn.primary .stamp { color: rgba(255, 255, 255, 0.72); }
       .btn.primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+      /* ปุ่ม PDF — แดงแบบโลโก้ Acrobat */
+      .btn.pdf {
+        background: #e5252a;
+        border-color: #e5252a;
+        color: #fff;
+      }
+      .btn.pdf small { color: rgba(255, 255, 255, 0.85); }
+      .btn.pdf .stamp { color: rgba(255, 255, 255, 0.75); }
+      .btn.pdf:hover {
+        background: #c41e22;
+        border-color: #c41e22;
+      }
+      main .btn.pdf small { color: #fff; }
       .btn:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
       .btn[disabled] { opacity: 0.6; cursor: progress; }
       #status {
@@ -195,7 +208,7 @@
       <p class="sub">เลือกวิธีเปิดดูแผนผัง</p>
 
       <div class="actions">
-        <a class="btn primary" id="btn-mobile" href="map.html">
+        <a class="btn pdf" id="btn-mobile" href="map.html">
           <span class="big">PDF</span>
           <small>มือถือ/แท็บเล็ต/PC</small>
           <span class="stamp" id="stamp-pdf"></span>
