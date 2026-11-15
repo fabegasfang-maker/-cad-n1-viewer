@@ -83,95 +83,88 @@
         cursor: pointer;
         justify-content: center;
       }
-      .btn .big { font-size: 3.2rem; font-weight: 700; line-height: 1.05; letter-spacing: 0.02em; }
-      main .btn.primary small { font-size: 1.15rem; font-weight: 600; color: #fff; }
-      main .btn .stamp { font-size: 0.8rem; }
-      .credit {
-        margin: 20px 0 0;
-        text-align: center;
-        color: var(--muted);
-        font-size: 0.75rem;
-      }
-      .btn small { font-weight: 400; font-size: 0.8rem; color: var(--muted); }
       .btn:hover { background: var(--secondary-hover); }
-      .btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
-      .btn.primary small { color: rgba(255, 255, 255, 0.8); }
+      .btn.primary {
+        background: var(--primary);
+        border-color: var(--primary);
+        color: #fff;
+      }
+      .btn.primary:hover { background: var(--primary-hover); }
+      .btn .big { font-size: 1.35rem; font-weight: 700; line-height: 1.2; }
+      .btn small {
+        font-size: 0.8rem;
+        font-weight: 500;
+        opacity: 0.9;
+      }
       .btn .stamp {
         display: block;
         margin-top: 4px;
-        font-weight: 400;
-        font-size: 0.68rem;
-        line-height: 1.3;
-        color: var(--muted);
-        opacity: 0.95;
-        word-break: break-word;
+        font-size: 0.72rem;
+        font-weight: 500;
+        opacity: 0.85;
+        min-height: 1em;
       }
-      .btn .stamp:empty { display: none; }
-      .btn.primary .stamp { color: rgba(255, 255, 255, 0.72); }
-      .btn.primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
-      .btn:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
-      .btn[disabled] { opacity: 0.6; cursor: progress; }
       #status {
         margin: 16px 0 0;
         min-height: 1.4em;
         text-align: center;
-        font-size: 0.85rem;
+        font-size: 0.88rem;
         color: var(--muted);
-        word-break: break-word;
       }
       #status.error { color: #dc2626; }
-      #status a { color: var(--primary); }
-
-      /* ปุ่ม setting มุมล่างขวา */
+      .credit {
+        margin: 20px 0 0;
+        text-align: center;
+        font-size: 0.78rem;
+        color: var(--muted);
+      }
       #btn-settings {
         position: fixed;
         right: 12px;
         bottom: 12px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 34px;
-        height: 34px;
-        padding: 0;
-        border-radius: 50%;
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
         border: 1px solid var(--line);
         background: var(--card);
         color: var(--muted);
-        font: inherit;
-        font-size: 1rem;
-        line-height: 1;
-        opacity: 0.85;
+        font-size: 1.2rem;
         cursor: pointer;
+        box-shadow: 0 1px 6px rgba(0,0,0,.12);
       }
       #btn-settings:hover { background: var(--secondary-hover); color: var(--text); }
-      #btn-settings:focus-visible, dialog button:focus-visible, dialog input:focus-visible {
-        outline: 3px solid var(--primary);
-        outline-offset: 2px;
-      }
       dialog {
-        width: calc(100% - 32px);
-        max-width: 440px;
-        padding: 24px;
         border: 1px solid var(--line);
         border-radius: 16px;
+        padding: 24px;
         background: var(--card);
         color: var(--text);
-        font: inherit;
+        max-width: 420px;
+        width: calc(100% - 32px);
       }
-      dialog::backdrop { background: rgba(2, 6, 23, 0.55); }
+      dialog::backdrop { background: rgba(15, 23, 42, 0.45); }
       dialog h2 { margin: 0 0 16px; font-size: 1.15rem; }
-      dialog label { display: block; font-size: 0.9rem; font-weight: 600; margin-bottom: 6px; }
-      dialog input[type='text'] {
+      dialog label {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 0.9rem;
+        font-weight: 500;
+      }
+      dialog input {
         width: 100%;
         padding: 10px 12px;
-        border: 1px solid var(--line);
         border-radius: 10px;
+        border: 1px solid var(--line);
         background: var(--bg);
         color: var(--text);
         font: inherit;
-        font-size: 0.9rem;
+        font-size: 0.95rem;
       }
-      dialog .hint { margin: 8px 0 0; font-size: 0.8rem; color: var(--muted); word-break: break-all; }
+      dialog .hint {
+        margin: 8px 0 0;
+        font-size: 0.8rem;
+        color: var(--muted);
+      }
       dialog .hint.error { color: #dc2626; }
       dialog .row { display: flex; gap: 8px; margin-top: 20px; justify-content: flex-end; flex-wrap: wrap; }
       dialog .row button {
@@ -212,7 +205,7 @@
       </div>
 
       <p id="status" role="status" aria-live="polite"></p>
-      <p class="credit">พัฒนาโดย จตุพัชร คะระออม</p>
+      <p class="credit">พัฒนาโดย ผคฟ.กปบ.น.1 (จตุพัชร คะระออม)</p>
     </main>
 
     <button id="btn-settings" type="button" aria-haspopup="dialog" aria-label="ตั้งค่า" title="ตั้งค่า">⚙</button>
