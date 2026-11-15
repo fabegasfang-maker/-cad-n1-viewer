@@ -1,0 +1,121 @@
+--- โฟลเดอร์ย่อยใน Drive (11) ---
+  [key=256911] พฤศจิกายน 2569  (แก้ไข 2026-11-01T01:05:34.944Z)
+  [key=256910] ตุลาคม 2569  (แก้ไข 2026-10-01T01:06:18.255Z)
+  [key=256909] กันยายน 2569   (แก้ไข 2026-09-01T01:05:31.327Z)
+  [key=256908] สิงหาคม 2569  (แก้ไข 2026-08-01T01:01:02.773Z)
+  [key=256907] กรกฎาคม 2569  (แก้ไข 2026-07-01T01:19:07.024Z)
+  [key=256906] มิถุนายน 2569  (แก้ไข 2026-06-01T01:19:03.406Z)
+  [key=256905] พฤษภาคม 2569  (แก้ไข 2026-05-01T01:09:11.491Z)
+  [key=256904] เมษายน 2569  (แก้ไข 2026-04-01T01:08:22.168Z)
+--- ในโฟลเดอร์ "พฤศจิกายน 2569" ---
+  แผนผังสวิทชิ่งสั่งการ 14 พฤศจิกายน  2569_V2007.dwg  (35.4 MB, แก้ไข 2026-11-14T09:01:41.661Z)
+  แผนผังสวิทชิ่งสั่งการ 13 พฤศจิกายน  2569_V2007.dwg  (48.9 MB, แก้ไข 2026-11-13T09:12:47.480Z)
+  แผนผังสวิทชิ่งสั่งการ 12 พฤศจิกายน  2569_V2007.dwg  (23.7 MB, แก้ไข 2026-11-12T08:58:29.300Z)
+  แผนผังสวิทชิ่งสั่งการ 11 พฤศจิกายน  2569_V2007.dwg  (60.2 MB, แก้ไข 2026-11-11T09:10:47.008Z)
+  แผนผังสวิทชิ่งสั่งการ 10 พฤศจิกายน  2569_V2007.dwg  (33.2 MB, แก้ไข 2026-11-10T09:23:54.831Z)
+  แผนผังสวิทชิ่งสั่งการ 9 พฤศจิกายน  2569_V2007.dwg  (28.0 MB, แก้ไข 2026-11-09T10:18:15.126Z)
+  แผนผังสวิทชิ่งสั่งการ 8 พฤศจิกายน  2569_V2007.dwg  (28.0 MB, แก้ไข 2026-11-08T09:05:33.247Z)
+  แผนผังสวิทชิ่งสั่งการ 7 พฤศจิกายน  2569_V2007.dwg  (43.7 MB, แก้ไข 2026-11-07T09:03:48.599Z)
+  แผนผังสวิทชิ่งสั่งการ 6 พฤศจิกายน  2569_V2007.dwg  (47.9 MB, แก้ไข 2026-11-06T08:58:54.112Z)
+  แผนผังสวิทชิ่งสั่งการ 5 พฤศจิกายน  2569_V2007.dwg  (24.8 MB, แก้ไข 2026-11-05T08:59:57.118Z)
+  แผนผังสวิทชิ่งสั่งการ 4 พฤศจิกายน  2569_V2007.dwg  (21.7 MB, แก้ไข 2026-11-05T01:04:35.352Z)
+  แผนผังสวิทชิ่งสั่งการ 3 พฤศจิกายน  2569_V2007.dwg  (46.4 MB, แก้ไข 2026-11-03T11:32:08.847Z)
+  แผนผังสวิทชิ่งสั่งการ 2 พฤศจิกายน  2569_V2007.dwg  (25.5 MB, แก้ไข 2026-11-02T09:10:58.416Z)
+  แผนผังสวิทชิ่งสั่งการ 1 พฤศจิกายน  2569_V2007.dwg  (25.5 MB, แก้ไข 2026-11-01T09:22:08.097Z)
+--- ไฟล์ .dwg ที่ราก: แผนผังสวิทชิ่งสั่งการ 28 สิงหาคม 2569_หลังจ่าย2.dwg (แก้ไข 2026-09-12T12:14:07.000Z)
+ไฟล์ล่าสุดบน Drive: แผนผังสวิทชิ่งสั่งการ 14 พฤศจิกายน  2569_V2007.dwg (2026-11-14T09:01:41.661Z, 35.4 MB)
+ดาวน์โหลด DWG...
+DWG → DXF...
+แปลง DWG -> DXF ด้วย dwgdxf (acadrust) สำเร็จ (115.2 MB)
+วินิจฉัย: เรนเดอร์ภาพเทียบ...
+Found non-unique entity handle #5D0A7D, data validation is required.
+Found non-unique entity handle #5D0A7D, data validation is required.
+ตรวจซ่อมโครงสร้าง DXF อัตโนมัติ: แก้ไข 100074 จุด, แจ้งเตือน 0 จุด
+== header ==
+  $LTSCALE = 1.0
+  $CELTSCALE = 1.0
+  $PSLTSCALE = 1
+  $MSLTSCALE = None
+  $INSUNITS = 4
+  $MEASUREMENT = 0
+== linetypes (ชื่อ | pattern) ==
+  'ByBlock'                    []  desc=''
+  'ByLayer'                    []  desc=''
+  'Continuous'                 []  desc='Solid line'
+  'DOT2'                       [0.0, 3.175]  desc='Dot (.5x) .....................................'
+  'JIS_09_15'                  [15.0, 0.9, 0.6, 0.9, 0.6, 0.9]  desc='2SASEN15 ___ _ _ ___ _ _ ___ _ _ ___ _ _ ___'
+  'HIDDEN'                     [6.35, 3.175]  desc='Hidden __ __ __ __ __ __ __ __ __ __ __ __ __ __'
+  'JIS_02_0.7'                 [0.75, 0.6]  desc='HIDDEN0.75 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _'
+  'ACAD_ISO03W100'             [12.0, 18.0]  desc='ISO dash space __    __    __    __    __    __'
+  'ACAD_ISO02W100'             [12.0, 3.0]  desc='ISO dash __ __ __ __ __ __ __ __ __ __ __ __ __'
+  'DOT'                        [0.0, 0.25]  desc='Dot . . . . . . . . . . . . . . . . . . . . . .'
+  'CHROME'                     [10000.0, 0.0]  desc=''
+  'ACAD_ISO04W100'             [24.0, 3.0, 0.0, 3.0]  desc='ISO long-dash dot ____ . ____ . ____ . ____ . _'
+  'BORDER2'                    [6.35, 3.175, 6.35, 3.175, 0.0, 3.175, 0.0]  desc='Border (.5x) __.__.__.__.__.__.__.__.__.__.__.'
+  'DASHDOT2'                   [6.35, 3.175, 0.0, 3.175]  desc='Dash dot (.5x) _._._._._._._._._._._._._._._.'
+  'CENTER'                     [31.75, 6.35, 6.35, 6.35]  desc='Center ____ _ ____ _ ____ _ ____ _ ____ _ ____'
+== layers (ชื่อ | linetype | color | lw | on/frozen | #entities ใน msp) ==
+  '0'                                lt='Continuous'       color=7 lw=-3 on=True frozen=False n=101026
+  'ชื่อ'                             lt='Continuous'       color=7 lw=-3 on=True frozen=False n=10788
+  'สัญญลักษ์'                        lt='Continuous'       color=7 lw=-3 on=True frozen=False n=18366
+  'ระยะทาง'                          lt='Continuous'       color=170 lw=-3 on=True frozen=False n=227
+  'capacitor'                        lt='Continuous'       color=-7 lw=-3 on=False frozen=False n=189
+  'สถานี'                            lt='Continuous'       color=7 lw=-3 on=True frozen=False n=12135
+  '115KV.'                           lt='Continuous'       color=11 lw=-3 on=True frozen=False n=6555
+  'UG'                               lt='Continuous'       color=6 lw=-3 on=True frozen=False n=20
+  'รหัสอุปกรณ์ในระบบ 22 kv'          lt='Continuous'       color=5 lw=-3 on=True frozen=False n=8042
+  'F1'                               lt='Continuous'       color=1 lw=-3 on=True frozen=False n=3697
+  'FEEDER5'                          lt='Continuous'       color=-4 lw=-3 on=False frozen=False n=3
+  'MF2'                              lt='Continuous'       color=-2 lw=-3 on=False frozen=False n=4
+  'Fault Current'                    lt='Continuous'       color=-210 lw=-3 on=False frozen=False n=3
+  'ระหัสBK.out'                      lt='Continuous'       color=7 lw=-3 on=True frozen=False n=7
+  'รหัส เทิง'                        lt='Continuous'       color=-5 lw=-3 on=False frozen=False n=5
+  'รหัสnew'                          lt='Continuous'       color=-250 lw=-3 on=False frozen=False n=14
+  'รหัสเก่าเชียงของ2566'             lt='Continuous'       color=7 lw=-3 on=True frozen=False n=16
+  'F8'                               lt='Continuous'       color=34 lw=-3 on=True frozen=False n=37
+  'UG Lot5'                          lt='Continuous'       color=10 lw=-3 on=True frozen=False n=1750
+  'UG Lot1'                          lt='JIS_02_0.7'       color=7 lw=-3 on=True frozen=False n=3075
+  'F7'                               lt='Continuous'       color=108 lw=-3 on=True frozen=False n=0
+  'ระหัสBK'                          lt='Continuous'       color=7 lw=-3 on=True frozen=False n=0
+  'ต้น UG'                           lt='Continuous'       color=7 lw=-3 on=True frozen=False n=0
+  'cad-block.com'                    lt='Continuous'       color=7 lw=-3 on=True frozen=False n=0
+  'FEEDER1'                          lt='Continuous'       color=1 lw=-3 on=True frozen=False n=0
+  'FEEDER2'                          lt='Continuous'       color=2 lw=-3 on=True frozen=False n=0
+  'FEEDER3'                          lt='Continuous'       color=5 lw=-3 on=True frozen=False n=0
+  'FEEDER4'                          lt='Continuous'       color=3 lw=-3 on=True frozen=False n=0
+  'Defpoints'                        lt=None               color=None lw=None on=True frozen=False n=0
+== เอนทิตีบนเลเยอร์ '115KV.': 6555 ==
+ ชนิด: {'LWPOLYLINE': 2690, 'LINE': 1641, 'MTEXT': 1290, 'INSERT': 629, 'HATCH': 137, 'ARC': 103, 'CIRCLE': 63, 'TEXT': 2}
+ linetype (ระดับเอนทิตี): {'BYLAYER': 3885, 'JIS_09_15': 2649, 'ByBlock': 17, 'JIS_02_0.7': 4}
+ ltscale: {1.0: 6555}
+ สี: {(11, None): 3104, (256, None): 2201, (5, None): 960, (0, None): 108, (1, None): 71, (30, None): 57}
+ LWPOLYLINE (plinegen, width): {('plinegen', False, 'const_w', 0.5): 1653, ('plinegen', False, 'const_w', 0.05): 573, ('plinegen', False, 'const_w', 0.3): 273, ('plinegen', False, 'const_w', 0.0): 189, ('plinegen', False, 'const_w', 0.1): 2}
+ตรวจซ่อมโครงสร้าง DXF อัตโนมัติ: แก้ไข 100074 จุด, แจ้งเตือน 0 จุด
+เลเยอร์ทั้งหมด 29 (ปิด/แช่แข็ง 6), บล็อก 216
+เส้นกว้างที่เป็นเส้นปะ: ตัดเป็นช่วงปะ 4187 เส้น -> 94606 ช่วง
+ปรับแต่งผัง: ลบ WIPEOUT/พื้นขาวบังเส้น 72 ชิ้น, ซ่อมเส้นความยาวศูนย์ 91 ชิ้น, ปรับสีอ่อน 14784 จุด, ย้ายพื้นทึบลงล่างใน block 56 บล็อก
+Model space: 256221 วัตถุ -> LWPOLYLINE=164936, MTEXT=38000, LINE=19191, INSERT=16003, ARC=5964, HATCH=5058, CIRCLE=3380, SPLINE=3099, TEXT=575, POINT=15
+Extents: x -4312..11407  y -2681..3504
+ลด lineweight ที่หนาเกิน 922 จุด
+lineweight config: min_ez=0.45 (1/300 in), scale=0.0
+ดัชนีข้อความ: 23569 รายการ -> /home/runner/work/-cad-n1-viewer/-cad-n1-viewer/diag-out/texts.json
+ข้อความ: พบ 41249 ชิ้น, ใส่ลง PDF 43571 บรรทัด
+ในหน้า PDF: เส้น/รูปทรง 290648 ชิ้น, stroke pt min=0.100 max=0.100, ตัวอักษร 353331 ตัว
+PDF ok: /home/runner/work/-cad-n1-viewer/-cad-n1-viewer/diag-out/pipeline.pdf (22.7 MB, page 1189x468 mm)
+ตำแหน่ง 'CMD10VS-101' ในหน้า PDF: x=1248.0 y=300.7 fs=0.26
+drawings ทั้งหน้า: 290648; มี dash pattern: 0
+เส้นในหน้าต่าง (color, dashes, width):
+   10673 ((), None, 0)
+   562 ((0.0, 0.0, 0.0), '[] 0', 0.1)
+   402 ((0.0, 0.0, 1.0), '[] 0', 0.1)
+   320 ((1.0, 0.0, 0.0), '[] 0', 0.1)
+   273 ((1.0, 0.75, 0.0), '[] 0', 0.1)
+   236 ((0.0, 1.0, 0.0), '[] 0', 0.1)
+   218 ((0.5, 0.25, 0.0), '[] 0', 0.1)
+   156 ((1.0, 1.0, 0.0), '[] 0', 0.1)
+   124 ((0.0, 0.3, 0.22), '[] 0', 0.1)
+   116 ((0.0, 0.15, 0.04), '[] 0', 0.1)
+   97 ((1.0, 0.5, 0.0), '[] 0', 0.1)
+   96 ((0.07, 0.3, 0.0), '[] 0', 0.1)
+  → crop_close 5040 x 2801
+  → crop_wide 5750 x 2254
