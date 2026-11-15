@@ -51,7 +51,9 @@
         font: inherit; font-size: 0.9rem; text-decoration: none; box-shadow: 0 1px 6px rgba(0,0,0,.18);
         white-space: nowrap; cursor: pointer;
       }
+      .chip-icon { width: 44px; padding: 0; }
       a.chip:hover, button.chip:hover { background: var(--hover); }
+      .leaflet-bar a.fit-btn { display: flex; align-items: center; justify-content: center; }
       button.chip {
         font: inherit;
       }
@@ -129,7 +131,9 @@
     <div id="map" aria-label="แผนผังจ่ายไฟ ลากเพื่อเลื่อน ถ่างนิ้วเพื่อซูม"></div>
 
     <div id="bar">
-      <a class="chip" href="./" aria-label="กลับหน้าแรก">← หน้าแรก</a>
+      <a class="chip chip-icon" href="./" aria-label="กลับหน้าแรก" title="หน้าแรก">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h5v-6h4v6h5V10"/></svg>
+      </a>
       <button type="button" class="chip" id="btn-labels" aria-pressed="false" title="เปิด/ปิดป้ายชื่อคม (HTML)">ป้ายชื่อ: ปิด</button>
       <div id="search-wrap">
         <input id="q" type="search" inputmode="search" enterkeyhint="search" autocomplete="off" autocapitalize="off"
@@ -249,6 +253,26 @@
           tileLayer.addTo(map);
 
           L.control.zoom({ position: 'bottomright', zoomInText: '+', zoomOutText: '−' }).addTo(map);
+          // ปุ่ม Zoom to fit: กลับมาดูทั้งผังพอดีจอ
+          var FitControl = L.Control.extend({
+            options: { position: 'bottomright' },
+            onAdd: function () {
+              var box = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+              var a = L.DomUtil.create('a', 'fit-btn', box);
+              a.href = '#';
+              a.role = 'button';
+              a.title = 'ดูทั้งผัง (Zoom to fit)';
+              a.setAttribute('aria-label', 'ดูทั้งผังพอดีจอ');
+              a.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>';
+              L.DomEvent.disableClickPropagation(box);
+              L.DomEvent.on(a, 'click', function (e) {
+                L.DomEvent.preventDefault(e);
+                map.fitBounds(bounds, { animate: true });
+              });
+              return box;
+            }
+          });
+          new FitControl().addTo(map);
           map.fitBounds(bounds, { animate: false });
           map.setMaxBounds(bounds.pad(0.25));
           msg.hidden = true;
