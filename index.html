@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>แผนผังการจ่ายไฟ กฟน1</title>
+    <title>แผนผังการจ่ายไฟ กฟน.1</title>
     <meta name="description" content="เปิดดูแผนผังจ่ายไฟแบบออนไลน์ หรือดาวน์โหลดไฟล์แผนผังล่าสุด" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -55,15 +55,6 @@
         font-size: 1.5rem;
         font-weight: 700;
         text-align: center;
-      }
-      .file-date {
-        margin: 8px 0 0;
-        text-align: center;
-        color: var(--muted);
-        font-size: 0.78rem;
-        line-height: 1.35;
-        word-break: break-word;
-        min-height: 1.2em;
       }
       .sub {
         margin: 6px 0 28px;
@@ -134,18 +125,22 @@
       /* ปุ่ม setting มุมล่างขวา */
       #btn-settings {
         position: fixed;
-        right: 16px;
-        bottom: 16px;
+        right: 12px;
+        bottom: 12px;
         display: flex;
         align-items: center;
-        gap: 6px;
-        padding: 10px 14px;
-        border-radius: 999px;
+        justify-content: center;
+        width: 34px;
+        height: 34px;
+        padding: 0;
+        border-radius: 50%;
         border: 1px solid var(--line);
         background: var(--card);
         color: var(--muted);
         font: inherit;
-        font-size: 0.85rem;
+        font-size: 1rem;
+        line-height: 1;
+        opacity: 0.85;
         cursor: pointer;
       }
       #btn-settings:hover { background: var(--secondary-hover); color: var(--text); }
@@ -196,8 +191,7 @@
   </head>
   <body>
     <main>
-      <h1>แผนผังการจ่ายไฟ กฟน1</h1>
-      <p class="file-date" id="file-date">กำลังตรวจสอบไฟล์ล่าสุด…</p>
+      <h1>แผนผังการจ่ายไฟ กฟน.1</h1>
       <p class="sub">เลือกวิธีเปิดดูแผนผัง</p>
 
       <div class="actions">
@@ -221,7 +215,7 @@
       <p class="credit">พัฒนาโดย จตุพัชร คะระออม</p>
     </main>
 
-    <button id="btn-settings" type="button" aria-haspopup="dialog">⚙ ตั้งค่า</button>
+    <button id="btn-settings" type="button" aria-haspopup="dialog" aria-label="ตั้งค่า" title="ตั้งค่า">⚙</button>
 
     <dialog id="settings-dialog" aria-labelledby="settings-title">
       <form method="dialog" id="settings-form">

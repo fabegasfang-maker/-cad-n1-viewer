@@ -8,17 +8,6 @@ import {
   DRIVE_API_KEY,
 } from './services/drivePublic';
 
-function formatModifiedTh(iso?: string): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  try {
-    return d.toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
-  } catch {
-    return iso;
-  }
-}
-
 // ต้องตรงกับ DEFAULT_DRIVE_FILE_ID ของตัวดู (scripts/restore-phase-a.mjs)
 const DEFAULT_DRIVE_FOLDER_ID = '1mP47qarQZxPF-ln5Dy7VZrJlcq0uPJ4D';
 
@@ -61,7 +50,6 @@ function stampText(iso?: string): string {
 }
 
 // ---------- วันที่ไฟล์ใต้ปุ่มทั้ง 3 ----------
-const fileDateEl = document.getElementById('file-date') as HTMLElement | null;
 
 function setStamp(id: string, text: string) {
   const el = document.getElementById(id);
@@ -76,7 +64,6 @@ function stripExt(name?: string): string {
 let pdfSource: { name: string; modifiedIso: string } | null = null;
 
 async function refreshLatestFileDate() {
-  if (fileDateEl) fileDateEl.textContent = 'กำลังตรวจสอบแผนผัง PDF ล่าสุด…';
   setStamp('stamp-pdf', 'กำลังตรวจสอบวันเวลา…');
   setStamp('stamp-cad', 'กำลังตรวจสอบวันเวลา…');
   setStamp('stamp-download', 'กำลังตรวจสอบวันเวลา…');
@@ -86,16 +73,10 @@ async function refreshLatestFileDate() {
     const res = await fetch('map/meta.json', { cache: 'no-cache' });
     if (!res.ok) throw new Error('no meta');
     const meta = await res.json();
-    const rendered = formatModifiedTh(meta.generatedAt);
     const name = stripExt(meta.sourceName);
     pdfSource = name || meta.sourceModified ? { name, modifiedIso: meta.sourceModified || '' } : null;
-    if (fileDateEl) {
-      fileDateEl.textContent = rendered ? `PDF ล่าสุด: ${rendered}` : 'ยังไม่พบวันที่เรนเดอร์ PDF';
-      if (name) fileDateEl.title = name;
-    }
     setStamp('stamp-pdf', stampText(meta.generatedAt));
   } catch {
-    if (fileDateEl) fileDateEl.textContent = 'ยังไม่พบวันที่เรนเดอร์ PDF';
     setStamp('stamp-pdf', stampText());
   }
 
