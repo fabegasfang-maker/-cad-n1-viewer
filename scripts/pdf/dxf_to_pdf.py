@@ -227,6 +227,12 @@ def place_texts(page, m, texts, font_file, index=None) -> int:
     o = m.transform(Vec2(0, 0))
     scale = max((m.transform(Vec2(1, 0)) - o).magnitude, 1e-12)
     n = 0
+    # ขนาดฟอนต์ขั้นต่ำ (pt) = ให้สูง PDF_MIN_TEXT_PX พิกเซลที่ซูมสูงสุดของกระเบื้อง (กว้าง TILE_MAX_WIDTH_PX)
+    # ตั้ง PDF_MIN_TEXT_PX=0 เพื่อปิด
+    min_px = float(os.environ.get("PDF_MIN_TEXT_PX", "12"))
+    max_w_px = float(os.environ.get("TILE_MAX_WIDTH_PX", "131072"))
+    min_fs = page.rect.width * min_px / max_w_px if min_px > 0 else 0.0
+    n_boosted = 0
     for e, raw, rgb in texts:
         try:
             t = e.dxftype()
@@ -253,6 +259,12 @@ def place_texts(page, m, texts, font_file, index=None) -> int:
             if h <= 0:
                 continue
             fs = h * scale / CAP_RATIO
+            if fs < min_fs:
+                # ตัวอักษรเล็กจิ๋ว (เช่น รหัส CMD..VS-xxx ข้างสวิตช์) ซูมสูงสุดแล้วยังเหลือไม่กี่พิกเซล
+                # → ขยายให้ถึงขั้นต่ำ (จุดยึดตามการจัดชิดเดิม) พร้อมขยาย h ให้ระยะบรรทัดสอดคล้องกัน
+                h *= min_fs / fs
+                fs = min_fs
+                n_boosted += 1
             lines = raw.split("\n")
             lh = h * LINE_SPACING * spacing
             nl = len(lines)
@@ -290,6 +302,8 @@ def place_texts(page, m, texts, font_file, index=None) -> int:
             continue
     for rgb, tw in writers.items():
         tw.write_text(page, color=rgb)
+    if n_boosted:
+        print(f"ขยายตัวอักษรเล็กจิ๋วให้ถึงขั้นต่ำ {min_fs:.3f} pt: {n_boosted} ข้อความ")
     return n
 
 
