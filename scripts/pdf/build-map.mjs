@@ -106,6 +106,7 @@ function setOutput(name, value) {
 
 async function main() {
   setOutput('map_changed', 'false');
+  if (process.env.SKIP_MAP && !process.env.FORCE_MAP) { console.log('SKIP_MAP → ไม่สร้างแผนที่ใหม่ ใช้กระเบื้องเดิม'); return; }
   if (!KEY) { console.log('::warning::ไม่มี GOOGLE_API_KEY → ข้ามการสร้างแผนที่'); return; }
 
   const prev = readPrevMeta();

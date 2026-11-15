@@ -47,6 +47,19 @@ export function parseDriveId(input: string): string | null {
   return /^[A-Za-z0-9_-]{10,}$/.test(s) ? s : null;
 }
 
+/** "อัปเดต วันที่ 15 พ.ย. 2569 เวลา 16:01 น." (เวลาไทย) */
+function stampText(iso?: string): string {
+  const d = iso ? new Date(iso) : null;
+  if (!d || Number.isNaN(d.getTime())) return 'อัปเดต วันที่ - เวลา -';
+  try {
+    const date = d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Bangkok' });
+    const time = d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Bangkok' });
+    return `อัปเดต วันที่ ${date} เวลา ${time} น.`;
+  } catch {
+    return 'อัปเดต วันที่ - เวลา -';
+  }
+}
+
 // ---------- วันที่ไฟล์ใต้ปุ่มทั้ง 3 ----------
 const fileDateEl = document.getElementById('file-date') as HTMLElement | null;
 
@@ -60,7 +73,7 @@ function stripExt(name?: string): string {
 }
 
 /** ข้อมูลไฟล์ต้นทางจากรอบเรนเดอร์ PDF (map/meta.json) ใช้เป็นค่าสำรองของ CAD/ดาวน์โหลดด้วย */
-let pdfSource: { name: string; modified: string } | null = null;
+let pdfSource: { name: string; modifiedIso: string } | null = null;
 
 async function refreshLatestFileDate() {
   if (fileDateEl) fileDateEl.textContent = 'กำลังตรวจสอบแผนผัง PDF ล่าสุด…';
@@ -74,26 +87,16 @@ async function refreshLatestFileDate() {
     if (!res.ok) throw new Error('no meta');
     const meta = await res.json();
     const rendered = formatModifiedTh(meta.generatedAt);
-    const srcWhen = formatModifiedTh(meta.sourceModified);
     const name = stripExt(meta.sourceName);
-    pdfSource = name || srcWhen ? { name, modified: srcWhen } : null;
+    pdfSource = name || meta.sourceModified ? { name, modifiedIso: meta.sourceModified || '' } : null;
     if (fileDateEl) {
       fileDateEl.textContent = rendered ? `PDF ล่าสุด: ${rendered}` : 'ยังไม่พบวันที่เรนเดอร์ PDF';
       if (name) fileDateEl.title = name;
     }
-    const parts = [
-      name ? `จากไฟล์ ${name}` : '',
-      srcWhen ? `(ไฟล์ต้นฉบับอัปเดต ${srcWhen})` : '',
-    ].filter(Boolean);
-    setStamp(
-      'stamp-pdf',
-      rendered
-        ? `เรนเดอร์ PDF เมื่อ ${rendered}${parts.length ? ' · ' + parts.join(' ') : ''}`
-        : 'ยังไม่พบวันเวลาที่เรนเดอร์ PDF'
-    );
+    setStamp('stamp-pdf', stampText(meta.generatedAt));
   } catch {
     if (fileDateEl) fileDateEl.textContent = 'ยังไม่พบวันที่เรนเดอร์ PDF';
-    setStamp('stamp-pdf', 'ยังไม่พบวันเวลาที่เรนเดอร์ PDF');
+    setStamp('stamp-pdf', stampText());
   }
 
   // 2) CAD และ ดาวน์โหลด: ไฟล์ .dwg ล่าสุดบน Google Drive (ไฟล์เดียวกับที่ตัวดู CAD เปิด / ปุ่มดาวน์โหลดบันทึก)
@@ -102,15 +105,12 @@ async function refreshLatestFileDate() {
     const meta = await resolvePublicDriveCadMeta(getFolderId(), undefined, {
       forMobileDownload: true,
     });
-    const when = formatModifiedTh(meta.modifiedTime);
-    const text = `ไฟล์ ${stripExt(meta.name)}${when ? ` · อัปเดตบน Drive ${when}` : ''}`;
+    const text = stampText(meta.modifiedTime);
     setStamp('stamp-cad', text);
     setStamp('stamp-download', text);
   } catch {
-    // ไม่มี API key / เรียก Drive ไม่ได้ → ใช้ข้อมูลไฟล์ต้นทางจากรอบเรนเดอร์ PDF แทน
-    const text = pdfSource
-      ? `ไฟล์ ${pdfSource.name}${pdfSource.modified ? ` · อัปเดต ${pdfSource.modified}` : ''} (ตามรอบเรนเดอร์ล่าสุด)`
-      : 'ยังไม่พบวันเวลาของไฟล์';
+    // ไม่มี API key / เรียก Drive ไม่ได้ → ใช้เวลาไฟล์ต้นทางจากรอบเรนเดอร์ PDF แทน
+    const text = stampText(pdfSource?.modifiedIso);
     setStamp('stamp-cad', text);
     setStamp('stamp-download', text);
   }
