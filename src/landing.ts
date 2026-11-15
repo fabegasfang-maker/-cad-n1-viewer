@@ -6,8 +6,18 @@ import {
   downloadPublicDriveCadToDevice,
   DRIVE_API_KEY,
   resolvePublicDriveCadMeta,
-  formatModifiedTh,
 } from './services/drivePublic';
+
+function formatModifiedTh(iso?: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  try {
+    return d.toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
+  } catch {
+    return iso;
+  }
+}
 
 // ต้องตรงกับ DEFAULT_DRIVE_FILE_ID ของตัวดู (scripts/restore-phase-a.mjs)
 const DEFAULT_DRIVE_FOLDER_ID = '1mP47qarQZxPF-ln5Dy7VZrJlcq0uPJ4D';
@@ -76,7 +86,7 @@ function setHint(text: string, isError = false) {
 
 document.getElementById('btn-settings')!.addEventListener('click', () => {
   const pin = window.prompt('ใส่รหัสเพื่อเปิดตั้งค่า');
-  if (pin === null) return; // กดยกเลิก
+  if (pin === null) return;
   if (pin.trim() !== SETTINGS_PIN) {
     setStatus('รหัสไม่ถูกต้อง', true);
     return;
@@ -99,7 +109,7 @@ document.getElementById('settings-reset')!.addEventListener('click', () => {
 document.getElementById('settings-form')!.addEventListener('submit', (e) => {
   const id = parseDriveId(driveInput.value);
   if (!id) {
-    e.preventDefault(); // ไม่ปิดกล่องเมื่อค่าไม่ถูกต้อง
+    e.preventDefault();
     setHint('อ่านลิงก์ไม่ได้ ตรวจว่าเป็นลิงก์ Google Drive หรือ ID ที่ถูกต้อง', true);
     return;
   }
@@ -133,7 +143,6 @@ function showDriveFallback(message: string) {
 btn.addEventListener('click', async () => {
   if (btn.disabled) return;
 
-  // ไม่มี API key ตอน build → ไม่สามารถค้นหาไฟล์ล่าสุดอัตโนมัติ ส่งไปที่โฟลเดอร์ Drive แทน
   if (!DRIVE_API_KEY) {
     window.open(
       `https://drive.google.com/drive/folders/${encodeURIComponent(getFolderId())}`,
