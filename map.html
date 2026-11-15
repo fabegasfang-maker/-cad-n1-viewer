@@ -51,6 +51,8 @@
         font: inherit; font-size: 0.9rem; text-decoration: none; box-shadow: 0 1px 6px rgba(0,0,0,.18);
         white-space: nowrap; cursor: pointer;
       }
+      /* ซ่อนปุ่ม "ป้ายชื่อ: เปิด/ปิด" (โค้ดยังอยู่) เปิดกลับ: ลบกฎนี้ และตั้ง LABELS_BUTTON_ENABLED = true ในสคริปต์ */
+      #btn-labels { display: none !important; }
       .chip-icon { width: 44px; padding: 0; }
       a.chip:hover, button.chip:hover { background: var(--hover); }
       .leaflet-bar a.fit-btn { display: flex; align-items: center; justify-content: center; }
@@ -296,7 +298,9 @@
           var items = null, loading = false, marker = null;
           var labelLayer = L.layerGroup().addTo(map);
           var labelTimer = null;
-          var labelsOn = readLabelsOn();
+          // ปุ่มป้ายชื่อถูกซ่อนอยู่ → ปิดป้ายชื่อเสมอ (ไม่อ่านค่าที่เคยบันทึกไว้) ตั้งเป็น true เพื่อเปิดใช้ปุ่มอีกครั้ง
+          var LABELS_BUTTON_ENABLED = false;
+          var labelsOn = LABELS_BUTTON_ENABLED ? readLabelsOn() : false;
 
           function syncBtn() {
             btn.classList.toggle('on', labelsOn);
