@@ -5,7 +5,6 @@
 import {
   downloadPublicDriveCadToDevice,
   DRIVE_API_KEY,
-  resolvePublicDriveCadMeta,
 } from './services/drivePublic';
 
 function formatModifiedTh(iso?: string): string {
@@ -47,26 +46,29 @@ export function parseDriveId(input: string): string | null {
   return /^[A-Za-z0-9_-]{10,}$/.test(s) ? s : null;
 }
 
-// ---------- วันที่ไฟล์ล่าสุด (ใต้หัวข้อ) ----------
+// ---------- วันที่ PDF ที่เรนเดอร์ล่าสุด (ใต้หัวข้อ) ----------
 const fileDateEl = document.getElementById('file-date') as HTMLElement | null;
 
 async function refreshLatestFileDate() {
   if (!fileDateEl) return;
-  if (!DRIVE_API_KEY) {
-    fileDateEl.textContent = '';
-    return;
-  }
-  fileDateEl.textContent = 'กำลังตรวจสอบไฟล์ล่าสุด…';
+  fileDateEl.textContent = 'กำลังตรวจสอบแผนผัง PDF ล่าสุด…';
   try {
-    const meta = await resolvePublicDriveCadMeta(getFolderId());
-    const when = formatModifiedTh(meta.modifiedTime);
-    if (when) {
-      fileDateEl.textContent = `ไฟล์ล่าสุด: ${meta.name} · อัปเดต ${when}`;
+    // วันที่จากรอบเรนเดอร์ PDF/กระเบื้องล่าสุด (map/meta.json) ไม่ใช่วันที่ไฟล์บน Drive
+    const res = await fetch('map/meta.json', { cache: 'no-cache' });
+    if (!res.ok) throw new Error('no meta');
+    const meta = await res.json();
+    const when = formatModifiedTh(meta.generatedAt || meta.sourceModified);
+    const name = meta.sourceName ? String(meta.sourceName).replace(/\.dwg$/i, '') : '';
+    if (when && name) {
+      fileDateEl.textContent = `PDF ล่าสุด: ${when}`;
+      fileDateEl.title = name;
+    } else if (when) {
+      fileDateEl.textContent = `PDF ล่าสุด: ${when}`;
     } else {
-      fileDateEl.textContent = `ไฟล์ล่าสุด: ${meta.name}`;
+      fileDateEl.textContent = 'ยังไม่พบวันที่เรนเดอร์ PDF';
     }
   } catch {
-    fileDateEl.textContent = 'ยังไม่พบวันที่ไฟล์ล่าสุด';
+    fileDateEl.textContent = 'ยังไม่พบวันที่เรนเดอร์ PDF';
   }
 }
 
