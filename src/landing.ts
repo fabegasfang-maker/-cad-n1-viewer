@@ -2,10 +2,18 @@
  * หน้าแรก: ปุ่ม "ดาวน์โหลดไฟล์แผนผังล่าสุด"
  * ใช้ตรรกะเดียวกับตัวดู (เลือกโฟลเดอร์เดือนล่าสุด → ไฟล์ .dwg ล่าสุด)
  */
-import { downloadPublicDriveCadToDevice, DRIVE_API_KEY } from './services/drivePublic';
+import {
+  downloadPublicDriveCadToDevice,
+  DRIVE_API_KEY,
+  resolvePublicDriveCadMeta,
+  formatModifiedTh,
+} from './services/drivePublic';
 
 // ต้องตรงกับ DEFAULT_DRIVE_FILE_ID ของตัวดู (scripts/restore-phase-a.mjs)
 const DEFAULT_DRIVE_FOLDER_ID = '1mP47qarQZxPF-ln5Dy7VZrJlcq0uPJ4D';
+
+/** รหัสเปิดเมนูตั้งค่า (เปลี่ยนได้ที่นี่) */
+const SETTINGS_PIN = 'n1cad';
 
 function getFolderId(): string {
   try {
@@ -29,7 +37,32 @@ export function parseDriveId(input: string): string | null {
   return /^[A-Za-z0-9_-]{10,}$/.test(s) ? s : null;
 }
 
-// ---------- ตั้งค่า (ปุ่มล่างขวา) ----------
+// ---------- วันที่ไฟล์ล่าสุด (ใต้หัวข้อ) ----------
+const fileDateEl = document.getElementById('file-date') as HTMLElement | null;
+
+async function refreshLatestFileDate() {
+  if (!fileDateEl) return;
+  if (!DRIVE_API_KEY) {
+    fileDateEl.textContent = '';
+    return;
+  }
+  fileDateEl.textContent = 'กำลังตรวจสอบไฟล์ล่าสุด…';
+  try {
+    const meta = await resolvePublicDriveCadMeta(getFolderId());
+    const when = formatModifiedTh(meta.modifiedTime);
+    if (when) {
+      fileDateEl.textContent = `ไฟล์ล่าสุด: ${meta.name} · อัปเดต ${when}`;
+    } else {
+      fileDateEl.textContent = `ไฟล์ล่าสุด: ${meta.name}`;
+    }
+  } catch {
+    fileDateEl.textContent = 'ยังไม่พบวันที่ไฟล์ล่าสุด';
+  }
+}
+
+void refreshLatestFileDate();
+
+// ---------- ตั้งค่า (ปุ่มล่างขวา) — ต้องใส่รหัส ----------
 const dialog = document.getElementById('settings-dialog') as HTMLDialogElement;
 const driveInput = document.getElementById('drive-input') as HTMLInputElement;
 const driveHint = document.getElementById('drive-hint') as HTMLElement;
@@ -42,6 +75,12 @@ function setHint(text: string, isError = false) {
 }
 
 document.getElementById('btn-settings')!.addEventListener('click', () => {
+  const pin = window.prompt('ใส่รหัสเพื่อเปิดตั้งค่า');
+  if (pin === null) return; // กดยกเลิก
+  if (pin.trim() !== SETTINGS_PIN) {
+    setStatus('รหัสไม่ถูกต้อง', true);
+    return;
+  }
   driveInput.value = getFolderId();
   setHint(HINT_DEFAULT);
   dialog.showModal();
@@ -68,6 +107,7 @@ document.getElementById('settings-form')!.addEventListener('submit', (e) => {
     localStorage.setItem(STORAGE_KEY, id);
   } catch {}
   setStatus('บันทึกตำแหน่งไฟล์ใหม่แล้ว ตัวดูและปุ่มดาวน์โหลดจะใช้ค่านี้');
+  void refreshLatestFileDate();
 });
 
 const btn = document.getElementById('btn-download') as HTMLButtonElement;
