@@ -147,6 +147,7 @@ async function main() {
     stdio: 'inherit',
     env: {
       ...process.env,
+      PYTHONUNBUFFERED: '1',
       PDF_MIN_LINEWEIGHT_MM: process.env.PDF_MIN_LINEWEIGHT_MM || '0.02',
       PDF_LINEWEIGHT_SCALING: process.env.PDF_LINEWEIGHT_SCALING || '0',
       PDF_ENTITY_MAX_LW: process.env.PDF_ENTITY_MAX_LW || '30',

@@ -933,6 +933,14 @@ def render_modelspace_safely(doc, msp, cfg):
 
 
 def main(src: str, dst: str, texts_out: str = "") -> None:
+    import faulthandler
+    import sys as _sys
+
+    try:  # เผื่อค้าง: พิมพ์ว่าโปรแกรมอยู่บรรทัดไหนทุก 20 นาที + พิมพ์ทันทีไม่รอบัฟเฟอร์
+        _sys.stdout.reconfigure(line_buffering=True)
+        faulthandler.dump_traceback_later(1200, repeat=True, file=_sys.stderr)
+    except Exception:
+        pass
     doc = load_dxf_document(src)
     ezfonts.build_system_font_cache()
     force_thai_font(doc)
