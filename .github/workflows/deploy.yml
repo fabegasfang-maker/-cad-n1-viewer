@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  repository_dispatch:
+    types: [drive-changed]   # ยิงจาก Google Apps Script (docs/drive-watcher.gs) ทันทีที่ไฟล์ใน Drive เปลี่ยน
   schedule:
     # ตรวจไฟล์ DWG ใหม่บน Drive ทุก 30 นาที แล้วสร้างกระเบื้องแผนที่ใหม่เมื่อมีการเปลี่ยนแปลง
     - cron: '*/30 * * * *'
