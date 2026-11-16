@@ -221,65 +221,198 @@ def collect_texts(doc, msp):
     return texts
 
 
-def place_texts(page, m, texts, font_file, index=None) -> int:
+def _parse_text(e):
+    """อ่านพารามิเตอร์ของ TEXT/MTEXT → (type, h, ang, ins, halign, vpos, spacing) หรือ None ถ้าความสูง <= 0"""
+    t = e.dxftype()
+    if t == "MTEXT":
+        h = float(e.dxf.get("char_height", 2.5))
+        ins = e.dxf.insert
+        if e.dxf.hasattr("text_direction"):
+            d = e.dxf.text_direction
+            ang = math.atan2(d.y, d.x)
+        else:
+            ang = math.radians(e.dxf.get("rotation", 0.0))
+        ap = int(e.dxf.get("attachment_point", 1))
+        halign = {1: 0, 2: 1, 3: 2}[(ap - 1) % 3 + 1]
+        vpos = (ap - 1) // 3
+        spacing = float(e.dxf.get("line_spacing_factor", 1.0))
+    else:
+        h = float(e.dxf.get("height", 2.5))
+        ang = math.radians(e.dxf.get("rotation", 0.0))
+        ha, va = int(e.dxf.get("halign", 0)), int(e.dxf.get("valign", 0))
+        ins = e.dxf.align_point if (ha or va) and e.dxf.hasattr("align_point") else e.dxf.insert
+        halign = {0: 0, 1: 1, 2: 2, 4: 1}.get(ha, 0)
+        vpos = {0: 3, 1: 2, 2: 1, 3: 0}.get(va, 3)
+        spacing = 1.0
+    if h <= 0:
+        return None
+    return t, h, ang, ins, halign, vpos, spacing
+
+
+def _layout_lines(t, raw, h, spacing, vpos, halign, fs, font, scale):
+    """คืน [(บรรทัด, dx, dy)] เป็นระยะในกรอบข้อความ (หน่วยแบบวาดรูป) จากจุดแทรก"""
+    lines = raw.split("\n")
+    lh = h * LINE_SPACING * spacing
+    nl = len(lines)
+    if t == "MTEXT":
+        first = {0: -h, 1: (nl - 1) * lh / 2 - h / 2, 2: -h + (nl - 1) * lh}[vpos]
+    else:
+        first = {3: 0.0, 2: -h / 2, 1: 0.0, 0: -h}[vpos]
+    out = []
+    for i, line in enumerate(lines):
+        if not line.strip():
+            continue
+        wd = font.text_length(line, fontsize=fs) / scale
+        out.append((line, {0: 0.0, 1: -wd / 2, 2: -wd}[halign], first - i * lh, wd))
+    return out
+
+
+def _text_box(m, t, raw, h, ang, ins, halign, vpos, spacing, fs, font, scale):
+    """กรอบ (AABB ในพิกัดหน้า PDF) ของข้อความที่ขนาดเดิม + จุดยึด (จุดแทรก) ที่การขยายจะเกิดรอบจุดนี้"""
+    ca, sa = math.cos(ang), math.sin(ang)
+    xs, ys = [], []
+    for _line, dx, dy, wd in _layout_lines(t, raw, h, spacing, vpos, halign, fs, font, scale):
+        for lx, ly in ((dx, dy - 0.1 * h), (dx + wd, dy - 0.1 * h), (dx + wd, dy + 1.0 * h), (dx, dy + 1.0 * h)):
+            q = m.transform(Vec2(ins.x + lx * ca - ly * sa, ins.y + lx * sa + ly * ca))
+            xs.append(q.x)
+            ys.append(q.y)
+    if not xs:
+        return None, None
+    a = m.transform(Vec2(ins.x, ins.y))
+    return (min(xs), min(ys), max(xs), max(ys)), (a.x, a.y)
+
+
+def fit_text_scales(boxes, anchors, targets, gap, step=1.08, max_rounds=90):
+    """หาตัวคูณขยายของแต่ละข้อความ: ทุกตัวโตพร้อมกันทีละ step ตัวที่โตแล้วจะชนกรอบข้อความอื่นจะหยุดโต
+
+    boxes/anchors: กรอบและจุดยึดที่ขนาดเดิม, targets: ตัวคูณเป้าหมาย (1 = ไม่ขยาย) → คืน (ks, stats)
+    """
+    from collections import defaultdict
+
+    n = len(boxes)
+    ks = [1.0] * n
+    cur = list(boxes)
+    cell = 8.0
+    grid: dict = defaultdict(list)
+    reg: list = [set() for _ in range(n)]
+
+    def cells_of(b):
+        return [
+            (cx, cy)
+            for cx in range(int(b[0] // cell), int(b[2] // cell) + 1)
+            for cy in range(int(b[1] // cell), int(b[3] // cell) + 1)
+        ]
+
+    def register(i):
+        for c in cells_of(cur[i]):
+            if c not in reg[i]:
+                reg[i].add(c)
+                grid[c].append(i)
+
+    for i in range(n):
+        if boxes[i] is not None:
+            register(i)
+
+    active = [i for i in range(n) if boxes[i] is not None and targets[i] > 1.0001]
+    n_cand = len(active)
+    frozen_at_1 = 0
+    for _round in range(max_rounds):
+        if not active:
+            break
+        nxt = []
+        for i in active:
+            k_new = min(targets[i], ks[i] * step)
+            ax, ay = anchors[i]
+            x0, y0, x1, y1 = boxes[i]
+            nb = (ax + k_new * (x0 - ax), ay + k_new * (y0 - ay), ax + k_new * (x1 - ax), ay + k_new * (y1 - ay))
+            q = (nb[0] - gap, nb[1] - gap, nb[2] + gap, nb[3] + gap)
+            hit = False
+            seen = set()
+            for c in cells_of(q):
+                for j in grid.get(c, ()):
+                    if j == i or j in seen:
+                        continue
+                    seen.add(j)
+                    o = cur[j]
+                    if q[0] < o[2] and o[0] < q[2] and q[1] < o[3] and o[1] < q[3]:
+                        hit = True
+                        break
+                if hit:
+                    break
+            if hit:
+                if ks[i] == 1.0:
+                    frozen_at_1 += 1
+                continue  # หยุดโตที่ค่าเดิม
+            ks[i] = k_new
+            cur[i] = nb
+            register(i)
+            if k_new < targets[i] - 1e-9:
+                nxt.append(i)
+        active = nxt
+    full = sum(1 for i in range(n) if targets[i] > 1.0001 and ks[i] >= targets[i] - 1e-9)
+    grown = sum(1 for i in range(n) if targets[i] > 1.0001 and ks[i] > 1.0001)
+    return ks, {"candidates": n_cand, "full": full, "grown": grown, "frozen_at_1": frozen_at_1}
+
+
+def compute_text_scales(m, texts, font, scale, min_fs, fit):
+    """คืน (recs, ks, stats): recs = พารามิเตอร์ของแต่ละข้อความที่วาดได้ ks = ตัวคูณขยายของแต่ละตัว"""
+    recs = []
+    for e, raw, rgb in texts:
+        try:
+            r = _parse_text(e)
+        except Exception:
+            continue
+        if r is not None:
+            recs.append((raw, rgb) + r)
+    targets = []
+    for raw, rgb, t, h, ang, ins, halign, vpos, spacing in recs:
+        fs0 = h * scale / CAP_RATIO
+        targets.append(min(max(min_fs / fs0, 1.0), 8.0) if min_fs > 0 else 1.0)
+    if not fit:
+        return recs, targets, {"mode": "floor", "candidates": sum(1 for k in targets if k > 1.0001)}
+    boxes, anchors = [], []
+    for (raw, rgb, t, h, ang, ins, halign, vpos, spacing) in recs:
+        try:
+            b, a = _text_box(m, t, raw, h, ang, ins, halign, vpos, spacing, h * scale / CAP_RATIO, font, scale)
+        except Exception:
+            b, a = None, None
+        boxes.append(b)
+        anchors.append(a)
+    gap = min_fs / min_px_default() if min_px_default() > 0 else 0.0  # ช่องว่างขั้นต่ำ = 1 พิกเซลที่ซูมสูงสุด
+    targets = [t if boxes[i] is not None else 1.0 for i, t in enumerate(targets)]
+    ks, stats = fit_text_scales(boxes, anchors, targets, gap)
+    stats["mode"] = "fit"
+    return recs, ks, stats
+
+
+def min_px_default() -> float:
+    return float(os.environ.get("PDF_MIN_TEXT_PX", "12"))
+
+
+def place_texts(page, m, texts, font_file, index=None, fit=None) -> int:
     font = mu.Font(fontfile=font_file)
     writers: dict = {}
     o = m.transform(Vec2(0, 0))
     scale = max((m.transform(Vec2(1, 0)) - o).magnitude, 1e-12)
     n = 0
     # ขนาดฟอนต์ขั้นต่ำ (pt) = ให้สูง PDF_MIN_TEXT_PX พิกเซลที่ซูมสูงสุดของกระเบื้อง (กว้าง TILE_MAX_WIDTH_PX)
-    # ตั้ง PDF_MIN_TEXT_PX=0 เพื่อปิด
-    min_px = float(os.environ.get("PDF_MIN_TEXT_PX", "12"))
+    # ตั้ง PDF_MIN_TEXT_PX=0 เพื่อปิด; PDF_TEXT_FIT=0 = ขยายถึงขั้นต่ำทุกตัวโดยไม่สนใจการซ้อนทับ
+    min_px = min_px_default()
     max_w_px = float(os.environ.get("TILE_MAX_WIDTH_PX", "131072"))
     min_fs = page.rect.width * min_px / max_w_px if min_px > 0 else 0.0
-    n_boosted = 0
-    for e, raw, rgb in texts:
+    if fit is None:
+        fit = os.environ.get("PDF_TEXT_FIT", "1") != "0"
+    recs, ks, stats = compute_text_scales(m, texts, font, scale, min_fs, fit)
+    n_boosted = sum(1 for k in ks if k > 1.0001)
+    for (raw, rgb, t, h, ang, ins, halign, vpos, spacing), k in zip(recs, ks):
         try:
-            t = e.dxftype()
-            if t == "MTEXT":
-                h = float(e.dxf.get("char_height", 2.5))
-                ins = e.dxf.insert
-                if e.dxf.hasattr("text_direction"):
-                    d = e.dxf.text_direction
-                    ang = math.atan2(d.y, d.x)
-                else:
-                    ang = math.radians(e.dxf.get("rotation", 0.0))
-                ap = int(e.dxf.get("attachment_point", 1))
-                halign = {1: 0, 2: 1, 3: 2}[(ap - 1) % 3 + 1]
-                vpos = (ap - 1) // 3
-                spacing = float(e.dxf.get("line_spacing_factor", 1.0))
-            else:
-                h = float(e.dxf.get("height", 2.5))
-                ang = math.radians(e.dxf.get("rotation", 0.0))
-                ha, va = int(e.dxf.get("halign", 0)), int(e.dxf.get("valign", 0))
-                ins = e.dxf.align_point if (ha or va) and e.dxf.hasattr("align_point") else e.dxf.insert
-                halign = {0: 0, 1: 1, 2: 2, 4: 1}.get(ha, 0)
-                vpos = {0: 3, 1: 2, 2: 1, 3: 0}.get(va, 3)
-                spacing = 1.0
-            if h <= 0:
-                continue
             fs = h * scale / CAP_RATIO
-            if fs < min_fs:
-                # ตัวอักษรเล็กจิ๋ว (เช่น รหัส CMD..VS-xxx ข้างสวิตช์) ซูมสูงสุดแล้วยังเหลือไม่กี่พิกเซล
-                # → ขยายให้ถึงขั้นต่ำ (จุดยึดตามการจัดชิดเดิม) พร้อมขยาย h ให้ระยะบรรทัดสอดคล้องกัน
-                h *= min_fs / fs
-                fs = min_fs
-                n_boosted += 1
-            lines = raw.split("\n")
-            lh = h * LINE_SPACING * spacing
-            nl = len(lines)
-            if t == "MTEXT":
-                first = {0: -h, 1: (nl - 1) * lh / 2 - h / 2, 2: -h + (nl - 1) * lh}[vpos]
-            else:
-                first = {3: 0.0, 2: -h / 2, 1: 0.0, 0: -h}[vpos]
+            if k > 1.0001:
+                # ขยายรอบจุดแทรก (จุดยึดตามการจัดชิดเดิม) พร้อมขยาย h ให้ระยะบรรทัดสอดคล้องกัน
+                h *= k
+                fs *= k
             ca, sa = math.cos(ang), math.sin(ang)
-            for i, line in enumerate(lines):
-                if not line.strip():
-                    continue
-                wpt = font.text_length(line, fontsize=fs)
-                wd = wpt / scale
-                dx = {0: 0.0, 1: -wd / 2, 2: -wd}[halign]
-                dy = first - i * lh
+            for line, dx, dy, _wd in _layout_lines(t, raw, h, spacing, vpos, halign, fs, font, scale):
                 ox = ins.x + dx * ca - dy * sa
                 oy = ins.y + dx * sa + dy * ca
                 p = m.transform(Vec2(ox, oy))
@@ -303,7 +436,7 @@ def place_texts(page, m, texts, font_file, index=None) -> int:
     for rgb, tw in writers.items():
         tw.write_text(page, color=rgb)
     if n_boosted:
-        print(f"ขยายตัวอักษรเล็กจิ๋วให้ถึงขั้นต่ำ {min_fs:.3f} pt: {n_boosted} ข้อความ")
+        print(f"ขยายตัวอักษรเล็กจิ๋ว (ขั้นต่ำ {min_fs:.3f} pt, โหมด {stats.get('mode')}): {n_boosted} ข้อความ  {stats}")
     return n
 
 
