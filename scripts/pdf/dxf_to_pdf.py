@@ -401,7 +401,7 @@ def place_texts(page, m, texts, font_file, index=None, fit=None) -> int:
     max_w_px = float(os.environ.get("TILE_MAX_WIDTH_PX", "131072"))
     min_fs = page.rect.width * min_px / max_w_px if min_px > 0 else 0.0
     if fit is None:
-        fit = os.environ.get("PDF_TEXT_FIT", "1") != "0"
+        fit = os.environ.get("PDF_TEXT_FIT", "0") == "1"
     recs, ks, stats = compute_text_scales(m, texts, font, scale, min_fs, fit)
     n_boosted = sum(1 for k in ks if k > 1.0001)
     for (raw, rgb, t, h, ang, ins, halign, vpos, spacing), k in zip(recs, ks):

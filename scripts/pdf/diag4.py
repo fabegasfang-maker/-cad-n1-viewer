@@ -23,7 +23,7 @@ import pymupdf as mu
 from ezdxf.addons.drawing import layout
 from ezdxf.addons.drawing import pymupdf as ezpdf
 from ezdxf.math import BoundingBox2d, Vec2
-from ezdxf import fonts as ezfonts
+from ezdxf.fonts import fonts as ezfonts
 
 
 def main(src, out_dir):
