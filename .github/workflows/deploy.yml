@@ -32,6 +32,8 @@ jobs:
         run: bun install
       - name: Restore Phase A (App + Canvas mobile guards)
         run: node scripts/restore-phase-a.mjs
+      - name: Patch PC viewer (home button)
+        run: node scripts/patch-pc-home.mjs
       # กระเบื้องแผนที่เก็บไว้ใน branch map-tiles เพื่อไม่ต้องสร้างใหม่ทุกรอบ (สร้างเฉพาะเมื่อไฟล์ DWG เปลี่ยน)
       - name: Fetch previously generated map tiles
         continue-on-error: true
