@@ -7,10 +7,10 @@ on:
   repository_dispatch:
     types: [drive-changed]   # ยิงจาก Google Apps Script (docs/drive-watcher.gs) ทันทีที่ไฟล์ใน Drive เปลี่ยน
   schedule:
-    # ตรวจไฟล์ DWG บน Drive วันละ 2 รอบ: 07:30 และ 15:30 น. เวลาไทย (= 00:30 และ 08:30 UTC)
-    # build ใช้เวลา ~1.5 ชม. ผังใหม่จึงขึ้นราว 09:00 และ 17:00 น. (GitHub อาจเริ่มช้ากว่าตั้งได้)
-    - cron: '30 0 * * *'
-    - cron: '30 8 * * *'
+    # ตรวจไฟล์ DWG บน Drive วันละ 2 รอบ: 08:30 และ 16:30 น. เวลาไทย (= 01:30 และ 09:30 UTC)
+    # build ใช้เวลา ~1.5 ชม. ผังใหม่จึงขึ้นราว 10:00 และ 18:00 น. (GitHub อาจเริ่มช้ากว่าตั้งได้)
+    - cron: '30 1 * * *'
+    - cron: '30 9 * * *'
 
 permissions:
   contents: write   # ใช้บันทึกกระเบื้องแผนที่ลง branch map-tiles
