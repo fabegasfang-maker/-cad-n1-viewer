@@ -150,6 +150,7 @@
       }
       .ann-btn[aria-pressed="true"] { background: var(--primary); color: #fff; }
       .ann-btn:disabled { opacity: .35; cursor: default; }
+      .ann-touch-none, .ann-touch-none * { touch-action: none !important; }
       .ann-btn-txt { font: 800 15px/1 'Noto Sans Thai', system-ui, sans-serif; }
       .ann-btn:focus-visible, .ann-swatch:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
       .note-box { background: none; border: 0; width: max-content !important; height: auto !important; }
@@ -370,7 +371,7 @@
             cont.style.cursor = (tool === 'pen' || tool === 'close' || tool === 'open') ? 'crosshair' : tool === 'text' ? 'text' : tool === 'erase' ? 'pointer' : tool === 'move' ? 'move' : '';
             var sw = panelEl.querySelectorAll('.ann-swatch');
             for (var j = 0; j < sw.length; j++) sw[j].setAttribute('aria-pressed', String(COLORS[j].c === color));
-            if (tool === 'pen') map.dragging.disable(); else map.dragging.enable();
+            L.DomUtil[(tool === 'pen' || tool === 'move') ? 'addClass' : 'removeClass'](map.getContainer(), 'ann-touch-none');
           }
           function setTool(t) {
             closeEditor(false);
@@ -399,27 +400,70 @@
           }
           function commit(l) { history.push(l); writeStore(); refresh(); }
 
-          // ── ปากกา (freehand) ──
-          map.on('mousedown', function (e) {
-            if (tool !== 'pen' || !e.latlng) return;
-            pts = [[e.latlng.lat, e.latlng.lng]];
-            cur = L.polyline([e.latlng], { color: color, weight: 4, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(map);
-          });
-          map.on('mousemove', function (e) {
-            if (!cur || !e.latlng) return;
-            var last = map.latLngToContainerPoint(L.latLng(pts[pts.length - 1]));
-            if (last.distanceTo(map.latLngToContainerPoint(e.latlng)) < 3) return;
-            pts.push([e.latlng.lat, e.latlng.lng]);
-            cur.addLatLng(e.latlng);
-          });
-          function finishStroke() {
-            if (!cur) return;
-            map.removeLayer(cur);
-            var stroke = pts.length > 1 ? addNote({ t: 'pen', c: color, p: pts }) : null;
-            cur = null; pts = null;
-            if (stroke) commit(stroke);
+          // ── ปากกา + ย้าย: ใช้ Pointer Events ตรงๆ (ทำงานกับนิ้วบนมือถือ) ──
+          // เมื่อเริ่มท่าทางที่เครื่องมือนี้ใช้ จะหยุดการลากแผนที่ของ Leaflet เพื่อไม่ให้ผังเลื่อนตาม
+          var gesture = null;
+          var cont = map.getContainer();
+          function startGesture(ev) {
+            if (gesture || !ev.clientX && ev.clientX !== 0) return;
+            if (tool === 'pen') {
+              var ll = map.mouseEventToLatLng(ev);
+              pts = [[ll.lat, ll.lng]];
+              cur = L.polyline([ll], { color: color, weight: 4, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(map);
+              gesture = { type: 'pen' };
+            } else if (tool === 'move') {
+              var hit = findHit(map.mouseEventToContainerPoint(ev), ev.clientX, ev.clientY);
+              if (!hit) return;
+              gesture = { type: 'move', layer: hit, last: map.mouseEventToLatLng(ev) };
+            }
           }
-          map.on('mouseup mouseout', finishStroke);
+          ['pointerdown', 'mousedown', 'touchstart'].forEach(function (t) {
+            cont.addEventListener(t, function (ev) {
+              if (ev.type !== 'touchstart' && (ev.type === 'pointerdown' || !gesture)) startGesture(ev);
+              if (gesture) ev.stopPropagation();
+            }, true);
+          });
+          function onGestureMove(ev) {
+            if (!gesture) return;
+            if (gesture.type === 'pen' && cur) {
+              var ll = map.mouseEventToLatLng(ev);
+              var last = map.latLngToContainerPoint(L.latLng(pts[pts.length - 1]));
+              if (last.distanceTo(map.latLngToContainerPoint(ll)) < 3) return;
+              pts.push([ll.lat, ll.lng]);
+              cur.addLatLng(ll);
+            } else if (gesture.type === 'move') {
+              var ll2 = map.mouseEventToLatLng(ev);
+              var dl = ll2.lat - gesture.last.lat, dg = ll2.lng - gesture.last.lng;
+              if (!dl && !dg) return;
+              gesture.last = ll2;
+              var l = gesture.layer;
+              if (l instanceof L.Polyline) {
+                l.setLatLngs(l.getLatLngs().map(function (q) { return L.latLng(q.lat + dl, q.lng + dg); }));
+              } else {
+                var c = l.getLatLng();
+                l.setLatLng(L.latLng(c.lat + dl, c.lng + dg));
+              }
+            }
+          }
+          function finishGesture() {
+            if (!gesture) return;
+            var g = gesture;
+            gesture = null;
+            if (g.type === 'pen' && cur) {
+              map.removeLayer(cur);
+              var stroke = pts.length > 1 ? addNote({ t: 'pen', c: color, p: pts }) : null;
+              cur = null; pts = null;
+              if (stroke) commit(stroke);
+            } else if (g.type === 'move') {
+              var l = g.layer;
+              if (l instanceof L.Polyline) l._note.p = l.getLatLngs().map(function (q) { return [q.lat, q.lng]; });
+              else { var c = l.getLatLng(); l._note.p = [c.lat, c.lng]; }
+              writeStore(); refresh();
+            }
+          }
+          window.addEventListener('pointermove', onGestureMove);
+          window.addEventListener('mousemove', onGestureMove);
+          ['pointerup', 'pointercancel', 'mouseup'].forEach(function (t) { window.addEventListener(t, finishGesture); });
 
           // ── กล่องข้อความ ──
           function closeEditor(save) {
@@ -478,38 +522,6 @@
             layer.removeLayer(hit);
             writeStore(); refresh();
           }
-
-          // ── ย้ายตำแหน่ง: กดค้างที่เส้น/ป้าย แล้วลาก ──
-          var moving = null;
-          map.getContainer().addEventListener('pointerdown', function (ev) {
-            if (tool !== 'move') return;
-            var hit = findHit(map.mouseEventToContainerPoint(ev), ev.clientX, ev.clientY);
-            if (!hit) return;
-            map.dragging.disable();   // กันไม่ให้แผนที่เลื่อนพร้อมกับที่ลาก
-            moving = { layer: hit, last: map.mouseEventToLatLng(ev) };
-          }, true);
-          map.on('mousemove', function (e) {
-            if (!moving || !e.latlng) return;
-            var dl = e.latlng.lat - moving.last.lat, dg = e.latlng.lng - moving.last.lng;
-            moving.last = e.latlng;
-            var l = moving.layer;
-            if (l instanceof L.Polyline) {
-              l.setLatLngs(l.getLatLngs().map(function (q) { return L.latLng(q.lat + dl, q.lng + dg); }));
-            } else {
-              var c = l.getLatLng();
-              l.setLatLng(L.latLng(c.lat + dl, c.lng + dg));
-            }
-          });
-          function finishMove() {
-            if (!moving) return;
-            var l = moving.layer;
-            moving = null;
-            if (l instanceof L.Polyline) l._note.p = l.getLatLngs().map(function (q) { return [q.lat, q.lng]; });
-            else { var c = l.getLatLng(); l._note.p = [c.lat, c.lng]; }
-            writeStore(); refresh();
-          }
-          window.addEventListener('pointerup', finishMove);
-          window.addEventListener('pointercancel', finishMove);
 
           map.on('click', function (e) {
             if (tool === 'erase') { eraseAt(e); return; }
