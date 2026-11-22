@@ -145,7 +145,7 @@
       }
       .ann-swatch[aria-pressed="true"] { box-shadow: 0 0 0 3px var(--primary); }
       .ann-btn {
-        width: 42px; height: 42px; border: 0; border-radius: 10px; padding: 0; cursor: pointer;
+        width: 38px; height: 38px; border: 0; border-radius: 10px; padding: 0; cursor: pointer;
         background: transparent; color: var(--text); display: flex; align-items: center; justify-content: center;
       }
       .ann-btn[aria-pressed="true"] { background: var(--primary); color: #fff; }
@@ -367,7 +367,7 @@
             panelEl.querySelector('[data-act="undo"]').disabled = history.length === 0;
             panelEl.querySelector('.ann-colors').hidden = !(tool === 'pen' || tool === 'text');
             var cont = map.getContainer();
-            cont.style.cursor = (tool === 'pen' || tool === 'close' || tool === 'open') ? 'crosshair' : tool === 'text' ? 'text' : tool === 'erase' ? 'pointer' : '';
+            cont.style.cursor = (tool === 'pen' || tool === 'close' || tool === 'open') ? 'crosshair' : tool === 'text' ? 'text' : tool === 'erase' ? 'pointer' : tool === 'move' ? 'move' : '';
             var sw = panelEl.querySelectorAll('.ann-swatch');
             for (var j = 0; j < sw.length; j++) sw[j].setAttribute('aria-pressed', String(COLORS[j].c === color));
             if (tool === 'pen') map.dragging.disable(); else map.dragging.enable();
@@ -453,10 +453,7 @@
             var t = len ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len)) : 0;
             return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
           }
-          function eraseAt(e) {
-            var p = e.containerPoint;
-            var ox = e.originalEvent ? e.originalEvent.clientX : null;
-            var oy = e.originalEvent ? e.originalEvent.clientY : null;
+          function findHit(p, ox, oy) {
             var hit = null;
             layer.eachLayer(function (l) {
               if (!l._note) return;
@@ -467,16 +464,52 @@
                 }
               } else {
                 var el = l.getElement();
-                if (!el || ox === null) return;
+                if (!el || ox === null || ox === undefined) return;
                 var r = (el.querySelector('span') || el).getBoundingClientRect();
                 if (ox >= r.left - 10 && ox <= r.right + 10 && oy >= r.top - 10 && oy <= r.bottom + 10) hit = l;
               }
             });
+            return hit;
+          }
+          function eraseAt(e) {
+            var hit = findHit(e.containerPoint, e.originalEvent ? e.originalEvent.clientX : null, e.originalEvent ? e.originalEvent.clientY : null);
             if (!hit) return;
             history = history.filter(function (x) { return x !== hit; });
             layer.removeLayer(hit);
             writeStore(); refresh();
           }
+
+          // ── ย้ายตำแหน่ง: กดค้างที่เส้น/ป้าย แล้วลาก ──
+          var moving = null;
+          map.getContainer().addEventListener('pointerdown', function (ev) {
+            if (tool !== 'move') return;
+            var hit = findHit(map.mouseEventToContainerPoint(ev), ev.clientX, ev.clientY);
+            if (!hit) return;
+            map.dragging.disable();   // กันไม่ให้แผนที่เลื่อนพร้อมกับที่ลาก
+            moving = { layer: hit, last: map.mouseEventToLatLng(ev) };
+          }, true);
+          map.on('mousemove', function (e) {
+            if (!moving || !e.latlng) return;
+            var dl = e.latlng.lat - moving.last.lat, dg = e.latlng.lng - moving.last.lng;
+            moving.last = e.latlng;
+            var l = moving.layer;
+            if (l instanceof L.Polyline) {
+              l.setLatLngs(l.getLatLngs().map(function (q) { return L.latLng(q.lat + dl, q.lng + dg); }));
+            } else {
+              var c = l.getLatLng();
+              l.setLatLng(L.latLng(c.lat + dl, c.lng + dg));
+            }
+          });
+          function finishMove() {
+            if (!moving) return;
+            var l = moving.layer;
+            moving = null;
+            if (l instanceof L.Polyline) l._note.p = l.getLatLngs().map(function (q) { return [q.lat, q.lng]; });
+            else { var c = l.getLatLng(); l._note.p = [c.lat, c.lng]; }
+            writeStore(); refresh();
+          }
+          window.addEventListener('pointerup', finishMove);
+          window.addEventListener('pointercancel', finishMove);
 
           map.on('click', function (e) {
             if (tool === 'erase') { eraseAt(e); return; }
@@ -508,6 +541,8 @@
                     '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg></button>' +
                   '<button type="button" class="ann-btn ann-btn-txt" data-tool="close" aria-label="ตราสับ (วางทับอุปกรณ์)" title="สับ">สับ</button>' +
                   '<button type="button" class="ann-btn ann-btn-txt" data-tool="open" aria-label="ตราปลด (วางทับอุปกรณ์)" title="ปลด">ปลด</button>' +
+                  '<button type="button" class="ann-btn" data-tool="move" aria-label="ย้ายตำแหน่ง (กดค้างแล้วลาก)" title="ย้าย">' +
+                    '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v20M2 12h20M12 2l-3 3M12 2l3 3M12 22l-3-3M12 22l3-3M2 12l3-3M2 12l3 3M22 12l-3-3M22 12l-3 3"/></svg></button>' +
                   '<button type="button" class="ann-btn" data-tool="erase" aria-label="ลบบันทึก (แตะที่เส้นหรือกล่อง)" title="ลบ">' +
                     '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20H9L3 14l10-10 7 7-4 4"/><path d="M6.5 13.5l4 4"/></svg></button>' +
                   '<button type="button" class="ann-btn" data-act="undo" aria-label="ย้อนกลับ" title="ย้อนกลับ">' +
