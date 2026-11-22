@@ -161,7 +161,7 @@
       }
       .note-box.note-center span { transform: translate(-50%, -50%) scale(var(--note-s, 1)); transform-origin: 50% 50%; }
       .note-box span.note-stamp { font-size: 18px; font-weight: 800; padding: 2px 9px; border-width: 3px; background: #fff; }
-      .note-box.note-center span.note-stamp { transform: translate(-50%, -50%) scale(max(var(--note-s, 1), 0.6)); }
+      .note-box.note-center span.note-stamp { transform: translate(-50%, -50%) scale(calc(max(var(--note-s, 1), 0.6) * 0.6)); }
       .ann-editor {
         position: absolute; z-index: 1100; transform: translate(-4px, -4px);
         min-width: 160px; max-width: 280px; padding: 0; border: 2px solid var(--primary); border-radius: 6px;
@@ -365,7 +365,7 @@
               btns[i].setAttribute('aria-pressed', String(btns[i].getAttribute('data-tool') === tool));
             }
             panelEl.querySelector('[data-act="undo"]').disabled = history.length === 0;
-            panelEl.querySelector('.ann-colors').hidden = !(tool === 'pen' || tool === 'text' || tool === 'close' || tool === 'open');
+            panelEl.querySelector('.ann-colors').hidden = !(tool === 'pen' || tool === 'text');
             var cont = map.getContainer();
             cont.style.cursor = (tool === 'pen' || tool === 'close' || tool === 'open') ? 'crosshair' : tool === 'text' ? 'text' : tool === 'erase' ? 'pointer' : '';
             var sw = panelEl.querySelectorAll('.ann-swatch');
@@ -481,7 +481,7 @@
           map.on('click', function (e) {
             if (tool === 'erase') { eraseAt(e); return; }
             if (tool === 'close' || tool === 'open') {
-              commit(addNote({ t: 'text', k: 'stamp', c: color, s: tool === 'close' ? 'สับ' : 'ปลด', p: [e.latlng.lat, e.latlng.lng] }));
+              commit(addNote({ t: 'text', k: 'stamp', c: tool === 'close' ? '#dc2626' : '#16a34a', s: tool === 'close' ? 'สับ' : 'ปลด', p: [e.latlng.lat, e.latlng.lng] }));
               return;
             }
             if (tool !== 'text') return;
