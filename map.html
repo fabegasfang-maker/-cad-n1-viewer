@@ -127,6 +127,42 @@
       #msg p { margin: 0 0 16px; color: var(--muted); font-size: 0.92rem; }
       #msg .row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
       #msg[hidden] { display: none; }
+
+      /* ── เครื่องมือบันทึกบนผัง: ปากกา / กล่องข้อความ / ลบ ── */
+      .ann-wrap { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+      .ann-panel {
+        display: flex; gap: 6px; padding: 4px; border-radius: 12px;
+        background: var(--card); border: 1px solid var(--line); box-shadow: 0 1px 6px rgba(0,0,0,.18);
+      }
+      .ann-colors { display: flex; gap: 8px; padding: 6px 8px; }
+      .ann-colors[hidden] { display: none; }
+      .ann-swatch {
+        width: 28px; height: 28px; border-radius: 50%; padding: 0; cursor: pointer;
+        border: 2px solid var(--card); box-shadow: 0 0 0 1px var(--line);
+      }
+      .ann-swatch[aria-pressed="true"] { box-shadow: 0 0 0 3px var(--primary); }
+      .ann-btn {
+        width: 42px; height: 42px; border: 0; border-radius: 10px; padding: 0; cursor: pointer;
+        background: transparent; color: var(--text); display: flex; align-items: center; justify-content: center;
+      }
+      .ann-btn[aria-pressed="true"] { background: var(--primary); color: #fff; }
+      .ann-btn:disabled { opacity: .35; cursor: default; }
+      .ann-btn:focus-visible, .ann-swatch:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+      .note-box { background: none; border: 0; width: max-content !important; height: auto !important; }
+      .note-box span {
+        display: inline-block; max-width: 260px; padding: 3px 7px; border-radius: 6px; border: 2px solid;
+        background: rgba(255,255,255,.96); font: 600 15px/1.3 'Noto Sans Thai', system-ui, sans-serif;
+        white-space: pre-wrap; word-break: break-word; box-shadow: 0 1px 4px rgba(0,0,0,.2); cursor: pointer;
+      }
+      .ann-editor {
+        position: absolute; z-index: 1100; transform: translate(-4px, -4px);
+        min-width: 160px; max-width: 280px; padding: 0; border: 2px solid var(--primary); border-radius: 6px;
+        background: rgba(255,255,255,.97); color: #0f172a;
+      }
+      .ann-editor textarea {
+        display: block; width: 100%; min-height: 44px; border: 0; outline: 0; resize: none; background: transparent;
+        font: 600 16px/1.3 'Noto Sans Thai', system-ui, sans-serif; color: inherit; padding: 6px 8px;
+      }
     </style>
   </head>
   <body>
@@ -289,6 +325,182 @@
           if (parts.length) { info.textContent = parts.join(' · '); info.hidden = false; }
 
           setupSearchAndLabels(map, Z, ll);
+          setupAnnotations(map, meta);
+        }
+
+        function setupAnnotations(map, meta) {
+          var COLORS = [
+            { c: '#dc2626', n: 'แดง' }, { c: '#2563eb', n: 'น้ำเงิน' }, { c: '#eab308', n: 'เหลือง' },
+            { c: '#16a34a', n: 'เขียว' }, { c: '#0f172a', n: 'ดำ' }
+          ];
+          var color = COLORS[0].c;
+          var tool = null;          // null | 'pen' | 'text' | 'erase'
+          var KEY = 'cad_notes_' + meta.w + 'x' + meta.h + '_' + meta.maxZoom;
+          var layer = L.layerGroup().addTo(map);
+          var history = [];
+          var editor = null;
+          var cur = null, pts = null;
+          var panelEl = null;
+
+          function readStore() {
+            try { var d = JSON.parse(localStorage.getItem(KEY)); return Array.isArray(d) ? d : []; } catch (e) { return []; }
+          }
+          function writeStore() {
+            var data = [];
+            layer.eachLayer(function (l) { if (l._note) data.push(l._note); });
+            try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) {}
+          }
+          function refresh() {
+            if (!panelEl) return;
+            var btns = panelEl.querySelectorAll('[data-tool]');
+            for (var i = 0; i < btns.length; i++) {
+              btns[i].setAttribute('aria-pressed', String(btns[i].getAttribute('data-tool') === tool));
+            }
+            panelEl.querySelector('[data-act="undo"]').disabled = history.length === 0;
+            panelEl.querySelector('.ann-colors').hidden = !(tool === 'pen' || tool === 'text');
+            var cont = map.getContainer();
+            cont.style.cursor = tool === 'pen' ? 'crosshair' : tool === 'text' ? 'text' : tool === 'erase' ? 'pointer' : '';
+            var sw = panelEl.querySelectorAll('.ann-swatch');
+            for (var j = 0; j < sw.length; j++) sw[j].setAttribute('aria-pressed', String(COLORS[j].c === color));
+            if (tool === 'pen') map.dragging.disable(); else map.dragging.enable();
+          }
+          function setTool(t) {
+            closeEditor(false);
+            tool = tool === t ? null : t;
+            refresh();
+          }
+          function addNote(note) {
+            var l;
+            if (note.t === 'pen') {
+              l = L.polyline(note.p.map(function (q) { return L.latLng(q[0], q[1]); }), {
+                color: note.c, weight: 4, lineCap: 'round', lineJoin: 'round', interactive: true
+              });
+            } else {
+              l = L.marker(L.latLng(note.p[0], note.p[1]), {
+                icon: L.divIcon({
+                  className: 'note-box',
+                  html: '<span style="border-color:' + note.c + ';color:' + note.c + '">' + esc(note.s) + '</span>',
+                  iconSize: null
+                }),
+                keyboard: false
+              });
+            }
+            l._note = note;
+            l.on('click', function (e) {
+              if (tool !== 'erase') return;
+              L.DomEvent.stopPropagation(e);
+              history = history.filter(function (x) { return x !== l; });
+              layer.removeLayer(l);
+              writeStore(); refresh();
+            });
+            layer.addLayer(l);
+            return l;
+          }
+          function commit(l) { history.push(l); writeStore(); refresh(); }
+
+          // ── ปากกา (freehand) ──
+          map.on('mousedown', function (e) {
+            if (tool !== 'pen' || !e.latlng) return;
+            pts = [[e.latlng.lat, e.latlng.lng]];
+            cur = L.polyline([e.latlng], { color: color, weight: 4, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(map);
+          });
+          map.on('mousemove', function (e) {
+            if (!cur || !e.latlng) return;
+            var last = map.latLngToContainerPoint(L.latLng(pts[pts.length - 1]));
+            if (last.distanceTo(map.latLngToContainerPoint(e.latlng)) < 3) return;
+            pts.push([e.latlng.lat, e.latlng.lng]);
+            cur.addLatLng(e.latlng);
+          });
+          function finishStroke() {
+            if (!cur) return;
+            map.removeLayer(cur);
+            var stroke = pts.length > 1 ? addNote({ t: 'pen', c: color, p: pts }) : null;
+            cur = null; pts = null;
+            if (stroke) commit(stroke);
+          }
+          map.on('mouseup mouseout', finishStroke);
+
+          // ── กล่องข้อความ ──
+          function closeEditor(save) {
+            if (!editor) return;
+            var ed = editor; editor = null;
+            var val = ed.ta.value.trim();
+            ed.el.remove();
+            if (save && val) commit(addNote({ t: 'text', c: color, s: val, p: [ed.ll.lat, ed.ll.lng] }));
+          }
+          function openEditor(latlng, containerPoint) {
+            closeEditor(false);
+            var el = L.DomUtil.create('div', 'ann-editor', map.getContainer());
+            el.style.left = containerPoint.x + 'px';
+            el.style.top = containerPoint.y + 'px';
+            var ta = L.DomUtil.create('textarea', '', el);
+            ta.rows = 2; ta.placeholder = 'พิมพ์ข้อความ';
+            ta.setAttribute('aria-label', 'ข้อความกล่องบันทึก');
+            ta.style.color = color;
+            editor = { el: el, ta: ta, ll: latlng };
+            L.DomEvent.disableClickPropagation(el);
+            L.DomEvent.on(ta, 'keydown', function (e) {
+              if (e.key === 'Escape') { e.preventDefault(); closeEditor(false); }
+              else if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); closeEditor(true); }
+            });
+            L.DomEvent.on(ta, 'blur', function () { closeEditor(true); });
+            setTimeout(function () { ta.focus(); }, 0);
+          }
+          map.on('click', function (e) {
+            if (tool !== 'text') return;
+            if (editor) { closeEditor(true); return; }
+            openEditor(e.latlng, e.containerPoint);
+          });
+          map.on('movestart', function () { if (editor) closeEditor(true); });
+
+          // ── แผงควบคุม ──
+          var PanelControl = L.Control.extend({
+            options: { position: 'bottomright' },
+            onAdd: function () {
+              var wrap = L.DomUtil.create('div', 'ann-wrap');
+              var colorsHtml = COLORS.map(function (o, i) {
+                return '<button type="button" class="ann-swatch" data-color="' + i + '" style="background:' + o.c + '" aria-label="สี' + o.n + '" title="สี' + o.n + '"></button>';
+              }).join('');
+              wrap.innerHTML =
+                '<div class="ann-panel ann-colors" hidden>' + colorsHtml + '</div>' +
+                '<div class="ann-panel">' +
+                  '<button type="button" class="ann-btn" data-tool="pen" aria-label="ปากกาวาดอิสระ" title="ปากกา">' +
+                    '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/></svg></button>' +
+                  '<button type="button" class="ann-btn" data-tool="text" aria-label="กล่องข้อความ" title="กล่องข้อความ">' +
+                    '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg></button>' +
+                  '<button type="button" class="ann-btn" data-tool="erase" aria-label="ลบบันทึก (แตะที่เส้นหรือกล่อง)" title="ลบ">' +
+                    '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20H9L3 14l10-10 7 7-4 4"/><path d="M6.5 13.5l4 4"/></svg></button>' +
+                  '<button type="button" class="ann-btn" data-act="undo" aria-label="ย้อนกลับ" title="ย้อนกลับ">' +
+                    '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg></button>' +
+                  '<button type="button" class="ann-btn" data-act="clear" aria-label="ลบบันทึกทั้งหมด" title="ลบทั้งหมด">' +
+                    '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>' +
+                '</div>';
+              L.DomEvent.disableClickPropagation(wrap);
+              L.DomEvent.disableScrollPropagation(wrap);
+              wrap.addEventListener('click', function (e) {
+                var t = e.target.closest('button');
+                if (!t || !wrap.contains(t)) return;
+                if (t.hasAttribute('data-tool')) setTool(t.getAttribute('data-tool'));
+                else if (t.hasAttribute('data-color')) { color = COLORS[+t.getAttribute('data-color')].c; refresh(); }
+                else if (t.getAttribute('data-act') === 'undo') {
+                  var last = history.pop();
+                  if (last) { layer.removeLayer(last); writeStore(); }
+                  refresh();
+                } else if (t.getAttribute('data-act') === 'clear') {
+                  if (!layer.getLayers().length) return;
+                  if (!window.confirm('ลบบันทึกทั้งหมดบนผังนี้?')) return;
+                  closeEditor(false);
+                  layer.clearLayers(); history = []; writeStore(); refresh();
+                }
+              });
+              panelEl = wrap;
+              return wrap;
+            }
+          });
+          new PanelControl().addTo(map);
+
+          readStore().forEach(function (n) { history.push(addNote(n)); });
+          refresh();
         }
 
         function setupSearchAndLabels(map, Z, ll) {
