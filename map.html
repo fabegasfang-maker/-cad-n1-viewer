@@ -129,7 +129,10 @@
       #msg[hidden] { display: none; }
 
       /* ── เครื่องมือบันทึกบนผัง: ปากกา / กล่องข้อความ / ลบ ── */
-      .ann-wrap { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+      .ann-wrap { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+      .ann-body { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+      .ann-body[hidden] { display: none; }
+      .ann-toggle[aria-expanded="true"] { background: var(--primary); color: #fff; }
       .ann-panel {
         display: flex; gap: 6px; padding: 4px; border-radius: 12px;
         background: var(--card); border: 1px solid var(--line); box-shadow: 0 1px 6px rgba(0,0,0,.18);
@@ -487,6 +490,7 @@
                 return '<button type="button" class="ann-swatch" data-color="' + i + '" style="background:' + o.c + '" aria-label="สี' + o.n + '" title="สี' + o.n + '"></button>';
               }).join('');
               wrap.innerHTML =
+                '<div class="ann-body" hidden>' +
                 '<div class="ann-panel ann-colors" hidden>' + colorsHtml + '</div>' +
                 '<div class="ann-panel">' +
                   '<button type="button" class="ann-btn" data-tool="pen" aria-label="ปากกาวาดอิสระ" title="ปากกา">' +
@@ -499,12 +503,25 @@
                     '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg></button>' +
                   '<button type="button" class="ann-btn" data-act="clear" aria-label="ลบบันทึกทั้งหมด" title="ลบทั้งหมด">' +
                     '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>' +
+                '</div>' +
+                '</div>' +
+                '<div class="ann-panel">' +
+                  '<button type="button" class="ann-btn ann-toggle" data-toggle="1" aria-expanded="false" aria-label="เปิดเครื่องมือวาดและเขียน" title="เครื่องมือวาด/เขียน">' +
+                    '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/></svg></button>' +
                 '</div>';
               L.DomEvent.disableClickPropagation(wrap);
               L.DomEvent.disableScrollPropagation(wrap);
               wrap.addEventListener('click', function (e) {
                 var t = e.target.closest('button');
                 if (!t || !wrap.contains(t)) return;
+                if (t.hasAttribute('data-toggle')) {
+                  var body = wrap.querySelector('.ann-body');
+                  var open = body.hidden;
+                  body.hidden = !open;
+                  t.setAttribute('aria-expanded', String(open));
+                  if (!open) { closeEditor(true); tool = null; refresh(); }
+                  return;
+                }
                 if (t.hasAttribute('data-tool')) setTool(t.getAttribute('data-tool'));
                 else if (t.hasAttribute('data-color')) { color = COLORS[+t.getAttribute('data-color')].c; refresh(); }
                 else if (t.getAttribute('data-act') === 'undo') {
