@@ -373,7 +373,7 @@
             var l;
             if (note.t === 'pen') {
               l = L.polyline(note.p.map(function (q) { return L.latLng(q[0], q[1]); }), {
-                color: note.c, weight: 4, lineCap: 'round', lineJoin: 'round', interactive: true
+                color: note.c, weight: 4, lineCap: 'round', lineJoin: 'round', interactive: false
               });
             } else {
               l = L.marker(L.latLng(note.p[0], note.p[1]), {
@@ -382,17 +382,10 @@
                   html: '<span style="border-color:' + note.c + ';color:' + note.c + '">' + esc(note.s) + '</span>',
                   iconSize: null
                 }),
-                keyboard: false
+                keyboard: false, interactive: false
               });
             }
             l._note = note;
-            l.on('click', function (e) {
-              if (tool !== 'erase') return;
-              L.DomEvent.stopPropagation(e);
-              history = history.filter(function (x) { return x !== l; });
-              layer.removeLayer(l);
-              writeStore(); refresh();
-            });
             layer.addLayer(l);
             return l;
           }
@@ -446,7 +439,39 @@
             L.DomEvent.on(ta, 'blur', function () { closeEditor(true); });
             setTimeout(function () { ta.focus(); }, 0);
           }
+          // ── ลบ: หาบันทึกที่อยู่ใกล้จุดที่แตะ (ไม่พึ่งการแตะโดนเส้นโดยตรง ซึ่งบนมือถือพลาดง่าย) ──
+          function distToSeg(p, a, b) {
+            var dx = b.x - a.x, dy = b.y - a.y, len = dx * dx + dy * dy;
+            var t = len ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len)) : 0;
+            return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+          }
+          function eraseAt(e) {
+            var p = e.containerPoint;
+            var ox = e.originalEvent ? e.originalEvent.clientX : null;
+            var oy = e.originalEvent ? e.originalEvent.clientY : null;
+            var hit = null;
+            layer.eachLayer(function (l) {
+              if (!l._note) return;
+              if (l._note.t === 'pen') {
+                var pts = l.getLatLngs().map(function (q) { return map.latLngToContainerPoint(q); });
+                for (var i = 1; i < pts.length; i++) {
+                  if (distToSeg(p, pts[i - 1], pts[i]) <= 14) { hit = l; return; }
+                }
+              } else {
+                var el = l.getElement();
+                if (!el || ox === null) return;
+                var r = el.getBoundingClientRect();
+                if (ox >= r.left - 10 && ox <= r.right + 10 && oy >= r.top - 10 && oy <= r.bottom + 10) hit = l;
+              }
+            });
+            if (!hit) return;
+            history = history.filter(function (x) { return x !== hit; });
+            layer.removeLayer(hit);
+            writeStore(); refresh();
+          }
+
           map.on('click', function (e) {
+            if (tool === 'erase') { eraseAt(e); return; }
             if (tool !== 'text') return;
             if (editor) { closeEditor(true); return; }
             openEditor(e.latlng, e.containerPoint);
