@@ -172,6 +172,26 @@
         display: block; width: 100%; min-height: 44px; border: 0; outline: 0; resize: none; background: transparent;
         font: 600 16px/1.3 'Noto Sans Thai', system-ui, sans-serif; color: inherit; padding: 6px 8px;
       }
+
+      /* ── คู่มือ 6 จังหวัด ── */
+      .guide-card {
+        position: absolute; left: 50%; top: 70px; transform: translateX(-50%); z-index: 1200;
+        width: min(340px, calc(100% - 32px)); max-height: calc(100% - 140px); overflow: auto;
+        background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 14px;
+        box-shadow: 0 8px 28px rgba(0,0,0,.25); padding: 14px 16px; font: 15px/1.5 'Noto Sans Thai', system-ui, sans-serif;
+      }
+      .guide-card[hidden] { display: none; }
+      .guide-card h3 { margin: 0 0 6px; font-size: 17px; }
+      .guide-card p { margin: 0 0 8px; color: #64748b; font-size: 13px; }
+      .guide-card ul { margin: 0 0 10px; padding-left: 18px; }
+      .guide-card li { margin-bottom: 4px; }
+      .guide-card .guide-row { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+      .guide-card button {
+        font: 600 14px 'Noto Sans Thai', system-ui, sans-serif; border-radius: 10px; padding: 8px 12px; cursor: pointer;
+        border: 1px solid var(--line); background: transparent; color: var(--text);
+      }
+      .guide-card button.primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+      .prov-tag span { border-color: #0f766e !important; color: #0f766e !important; font-weight: 800 !important; }
     </style>
   </head>
   <body>
@@ -335,6 +355,7 @@
 
           setupSearchAndLabels(map, Z, ll);
           setupAnnotations(map, meta);
+          setupProvinceGuide(map, meta);
         }
 
         function setupAnnotations(map, meta) {
@@ -639,6 +660,83 @@
 
           readStore().forEach(function (n) { history.push(addNote(n)); });
           refresh();
+        }
+
+        // คู่มือ 6 จังหวัด: ตำแหน่งอ้างอิงจากป้ายสำนักงาน กฟจ. ที่อยู่บนผัง (พิกัดเดียวกับดัชนีข้อความ)
+        function setupProvinceGuide(map, meta) {
+          var PROVS = [
+            { n: 'แม่ฮ่องสอน', x: 60692, y: 10373, d: 'มุมซ้ายบนสุดของผัง' },
+            { n: 'เชียงราย', x: 95015, y: 20376, d: 'ด้านขวาบน' },
+            { n: 'ลำพูน', x: 46227, y: 21154, d: 'กลางค่อนซ้าย ใต้แม่ฮ่องสอน' },
+            { n: 'เชียงใหม่', x: 62899, y: 22438, d: 'ตรงกลางผัง ถัดจากลำพูนไปทางขวา' },
+            { n: 'พะเยา', x: 96683, y: 34117, d: 'ด้านขวาล่าง ใต้เชียงราย' },
+            { n: 'ลำปาง', x: 63659, y: 40265, d: 'กลางค่อนล่าง ใต้เชียงใหม่' }
+          ];
+          var SEEN = 'cad_guide_seen_v1';
+          var tags = L.layerGroup();
+          var showTags = false;
+
+          var card = L.DomUtil.create('div', 'guide-card', map.getContainer());
+          card.hidden = true;
+          card.setAttribute('role', 'dialog');
+          card.setAttribute('aria-label', 'คู่มือตำแหน่งจังหวัดบนผัง');
+          card.innerHTML =
+            '<h3>ตำแหน่ง 6 จังหวัดบนผัง</h3>' +
+            '<p>ตำแหน่งโดยประมาณ อ้างอิงจากป้ายสำนักงานการไฟฟ้าจังหวัดที่อยู่บนผัง</p>' +
+            '<ul>' + PROVS.map(function (p) { return '<li><b>' + p.n + '</b> อยู่ ' + p.d + '</li>'; }).join('') + '</ul>' +
+            '<div class="guide-row">' +
+              '<button type="button" data-act="toggle">แสดงชื่อบนผัง</button>' +
+              '<button type="button" class="primary" data-act="close">เข้าใจแล้ว</button>' +
+            '</div>';
+          L.DomEvent.disableClickPropagation(card);
+          L.DomEvent.disableScrollPropagation(card);
+
+          function setTags(on) {
+            showTags = on;
+            if (on) {
+              PROVS.forEach(function (p) {
+                tags.addLayer(L.marker(map.unproject([p.x, p.y], meta.maxZoom), {
+                  interactive: false, keyboard: false,
+                  icon: L.divIcon({
+                    className: 'note-box note-center prov-tag',
+                    html: '<span>' + p.n + '</span>', iconSize: null
+                  })
+                }));
+              });
+            } else {
+              tags.clearLayers();
+            }
+            card.querySelector('[data-act="toggle"]').textContent = on ? 'ซ่อนชื่อบนผัง' : 'แสดงชื่อบนผัง';
+          }
+          function openCard() { card.hidden = false; }
+          function closeCard() {
+            card.hidden = true;
+            try { localStorage.setItem(SEEN, '1'); } catch (e) {}
+          }
+          card.addEventListener('click', function (e) {
+            var b = e.target.closest('button');
+            if (!b) return;
+            if (b.getAttribute('data-act') === 'toggle') setTags(!showTags);
+            else closeCard();
+          });
+
+          // ปุ่ม ℹ เปิดคู่มืออีกครั้ง
+          var InfoControl = L.Control.extend({
+            options: { position: 'bottomright' },
+            onAdd: function () {
+              var wrap = L.DomUtil.create('div', 'ann-panel');
+              wrap.innerHTML = '<button type="button" class="ann-btn" aria-label="คู่มือตำแหน่งจังหวัด" title="คู่มือตำแหน่งจังหวัด" style="font:800 18px Georgia,serif">i</button>';
+              L.DomEvent.disableClickPropagation(wrap);
+              wrap.querySelector('button').addEventListener('click', function () { card.hidden ? openCard() : closeCard(); });
+              return wrap;
+            }
+          });
+          new InfoControl().addTo(map);
+
+          tags.addTo(map);
+          var seen = false;
+          try { seen = localStorage.getItem(SEEN) === '1'; } catch (e) {}
+          if (!seen) openCard();
         }
 
         function setupSearchAndLabels(map, Z, ll) {
