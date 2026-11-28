@@ -49,6 +49,25 @@ function stampText(iso?: string): string {
   }
 }
 
+/** PDF: เวลาที่ไฟล์ถูกวางใน Drive + วงเล็บเวลาที่ build PDF เสร็จ */
+function pdfStampText(sourceIso?: string, builtIso?: string): string {
+  const base = sourceIso ? stampText(sourceIso) : stampText();
+  const b = builtIso ? new Date(builtIso) : null;
+  if (!b || Number.isNaN(b.getTime())) return base;
+  try {
+    const sameDay = (x: Date) => x.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
+    const src = sourceIso ? new Date(sourceIso) : null;
+    const time = b.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Bangkok' });
+    const date = b.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Bangkok' });
+    const same = !!src && !Number.isNaN(src.getTime()) && sameDay(src) === sameDay(b);
+    return same
+      ? `${base} (build เป็น PDF แล้วเสร็จเวลา ${time} น.)`
+      : `${base} (build เป็น PDF แล้วเสร็จ วันที่ ${date} เวลา ${time} น.)`;
+  } catch {
+    return base;
+  }
+}
+
 // ---------- วันที่ไฟล์ใต้ปุ่มทั้ง 3 ----------
 
 function setStamp(id: string, text: string) {
@@ -75,7 +94,7 @@ async function refreshLatestFileDate() {
     const meta = await res.json();
     const name = stripExt(meta.sourceName);
     pdfSource = name || meta.sourceModified ? { name, modifiedIso: meta.sourceModified || '' } : null;
-    setStamp('stamp-pdf', stampText(meta.generatedAt));
+    setStamp('stamp-pdf', pdfStampText(meta.sourceModified, meta.generatedAt));
   } catch {
     setStamp('stamp-pdf', stampText());
   }
